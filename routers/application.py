@@ -1,0 +1,126 @@
+from fastapi import APIRouter, Depends, HTTPException,status,Query,UploadFile,Form,File,Request,UploadFile, File
+from typing import List, Optional
+from datetime import datetime,timezone
+import uuid
+from gridfs import GridFS,GridFSBucket
+from pymongo.database import Database
+from database import collections
+from models import Application, ApplicationStatus, UserRole
+from utils.security import get_current_user
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorClient,AsyncIOMotorGridFSBucket
+from database import client,db,collections
+
+
+fs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="files")
+application_router = APIRouter(prefix="/application", tags=["Applications"])
+
+
+# ---------------------------------------------------------------------
+# CREATE APPLICATION
+# Users with any roles can apply
+# Prevent duplicate applications for same job
+# ---------------------------------------------------------------------
+
+
+@application_router.post("/applications", response_model=Application)
+async def create_application(
+    job_rr_id: str = Form(...),
+    resume_file: UploadFile = File(...),
+    cover_letter_file: UploadFile | None = File(default=None),
+    current_user: dict = Depends(get_current_user),
+):
+    # 1. validate job_rr_id, employee, etc. like you already do
+    role = current_user["role"]
+    
+    # if role not in ["TP", "Non TP"]:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="Only employees can create applications",
+    #     )
+
+    # 2. Validate that job_rr_id exists and job is open (jobs.status is boolean)
+    job_rr_id = job_rr_id.strip()
+
+    job = await collections["resource_request"].find_one(
+        {
+            "resource_request_id": job_rr_id,
+            "flag": True,
+        }
+    )
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job with RR ID '{job_rr_id}' not found or is no longer open",
+        )
+
+    # 3. Prevent duplicate applications
+    employee_id = str(current_user["employee_id"])
+
+    existing = await collections["applications"].find_one(
+        {
+            "employee_id": employee_id,
+            "job_rr_id": job_rr_id,
+            "status": {
+                "$nin": [
+                    ApplicationStatus.WITHDRAWN.value,
+                    ApplicationStatus.REJECTED.value,
+                ]
+            },
+        }
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already applied for this job",
+        )
+    
+    # 4. Store resume in GridFS (validate extension)
+    resume_file_id = None
+    if resume_file:
+        ext = resume_file.filename.split(".")[-1].lower()
+        if ext not in {"pdf", "doc", "docx"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid resume file type. Only .pdf, .doc, .docx are allowed.",
+            )
+        resume_bytes = await resume_file.read()
+        resume_file_id = await fs_bucket.upload_from_stream(
+            resume_file.filename,
+            resume_bytes,
+            metadata={"content_type": resume_file.content_type},
+        )
+
+    # 5. Store cover letter in GridFS (optional, validate extension if uploaded)
+    cover_letter_file_id = None
+    if cover_letter_file:
+        ext = cover_letter_file.filename.split(".")[-1].lower()
+        if ext not in {"pdf", "doc", "docx"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid cover letter file type. Only .pdf, .doc, .docx are allowed.",
+            )
+        cl_bytes = await cover_letter_file.read()
+        cover_letter_file_id = await fs_bucket.upload_from_stream(
+            cover_letter_file.filename,
+            cl_bytes,
+            metadata={"content_type": cover_letter_file.content_type},
+        )
+
+    # 6. Build application doc (just the IDs here)
+    application_data = {
+        "_id": str(uuid.uuid4()),
+        "job_rr_id": job_rr_id,
+        "employee_id": str(current_user["employee_id"]),
+        "status": ApplicationStatus.DRAFT.value,
+        "resume": str(resume_file_id) if resume_file_id else None,   # <- GridFS file id
+        "cover_letter": str(cover_letter_file_id) if cover_letter_file_id else None,
+        "submitted_at": None,
+        "updated_at": datetime.utcnow(),
+    }
+
+    result = await collections["applications"].insert_one(application_data)
+    created_app = await collections["applications"].find_one({"_id": result.inserted_id})
+
+    return Application(**created_app)
+

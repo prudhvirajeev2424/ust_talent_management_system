@@ -270,5 +270,24 @@ class ResourceRequest(BaseModel):
     class Config:
         populate_by_name = True
         extra = "ignore"
- 
+
+class ApplicationStatus(str, Enum):
+    DRAFT = "Draft"
+    SUBMITTED = "Submitted"
+    SHORTLISTED = "Shortlisted"
+    INTERVIEW = "Interview"
+    SELECTED = "Selected"
+    REJECTED = "Rejected"
+    ALLOCATED = "Allocated"
+    WITHDRAWN = "Withdrawn"
+
+class Application(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), alias="_id")
+    employee_id: int
+    job_rr_id: str
+    status: ApplicationStatus = ApplicationStatus.DRAFT
+    resume: Optional[str] = None
+    cover_letter: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
  
