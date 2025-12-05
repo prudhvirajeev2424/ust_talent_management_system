@@ -175,3 +175,40 @@ async def list_applications(
 ):
     return await get_manager_applications(current_user, page, limit)
 
+@manager_router.patch("/applications/{app_id}/interview")
+async def to_interview(
+    app_id: str,
+    interview_type: Literal["internal", "customer"] = Query(...),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "WFM":
+        raise HTTPException(403, "Only WFM can schedule interviews")
+ 
+    app = await collections["applications"].find_one({"_id": app_id})
+    if not app:
+        raise HTTPException(404, "Application not found")
+   
+    if not await verify_job_ownership(app["job_rr_id"], current_user["employee_id"], "WFM"):
+        raise HTTPException(403, "You don't manage this job")
+ 
+    if app["status"] not in ["Shortlisted", "Interview"]:
+        raise HTTPException(400, f"Cannot schedule interview: current status is '{app['status']}'. Must be 'Shortlisted' first.")
+ 
+    result = await collections["applications"].update_one(
+        {"_id": app_id},
+        {"$set": {
+            "status": "Interview",
+            "interview_type": interview_type,
+            "interview_scheduled_by": current_user["employee_id"],
+            "interview_scheduled_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+ 
+    if result.modified_count:
+        await log_audit("move_to_interview", app_id, current_user["employee_id"],
+                       {"interview_type": interview_type, "previous_status": app["status"]})
+        await update_job_stats_and_employee_type(app_id)
+        return {"message": f"Moved to {interview_type.title()} Interview", "previous_status": app["status"]}
+ 
+    raise HTTPException(500, "Failed to update application")
