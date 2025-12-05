@@ -272,3 +272,64 @@ async def withdraw(app_id: str, current_user: dict = Depends(get_current_user)):
     )
     return {"message": "Withdrawn"}
 
+# ---------------------------------------------------------------------
+# FILTER APPLICATIONS
+# Filter by job_rr_id or status
+# ---------------------------------------------------------------------
+ 
+ALLOWED_STATUS = {
+    "draft": "Draft",
+    "submitted": "Submitted",
+    "shortlisted": "Shortlisted",
+    "interview": "Interview",
+    "selected": "Selected",
+    "rejected": "Rejected",
+    "allocated": "Allocated",
+    "withdrawn": "Withdrawn",
+}
+def normalize_status(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return ALLOWED_STATUS.get(value.strip().lower())
+
+@application_router.get("/", response_model=List[Application])
+async def get_applications(
+    job_rr_id: Optional[str] = Query(None, description="Filter by job requisition ID"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    current_user: dict = Depends(get_current_user),
+):
+    # Normalize status to match Enum
+    norm_status = normalize_status(status)
+    if status is not None and norm_status is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{status}'. Allowed: {', '.join(ALLOWED_STATUS.values())}"
+        )
+ 
+    # Build query
+    if job_rr_id and norm_status:
+        query = {"$or": [{"job_rr_id": job_rr_id}, {"status": norm_status}]}
+    elif job_rr_id:
+        query = {"job_rr_id": job_rr_id}
+    elif norm_status:
+        query = {"status": norm_status}
+    else:
+        query = {}  # return all
+ 
+    cursor = collections["applications"].find(query)
+    applications = await cursor.to_list(length=100)
+ 
+    # Normalize DB statuses before returning
+    normalized_apps = []
+    for app in applications:
+        if "status" in app and app["status"]:
+            fixed = normalize_status(app["status"])
+            if fixed:
+                app["status"] = fixed
+        normalized_apps.append(Application(**app))
+ 
+    if not normalized_apps:
+        raise HTTPException(status_code=404, detail="No applications found for given criteria")
+ 
+    return normalized_apps
+ 
