@@ -93,3 +93,66 @@ async def delete_old_files_in_processed():
                 except Exception as e:
                     logger.error(f"Failed to delete {filename}: {e}")
  
+async def sync_employees_with_db(employees: List[Employee], users: List[User]):
+ 
+    existing = await collections["employees"].find({}, {"employee_id": 1, "status": 1}).to_list(None)
+    emp_map = {e["employee_id"]: e for e in existing}
+ 
+    existing_users = await collections["users"].find({}, {"employee_id": 1}).to_list(None)
+    user_set = {u["employee_id"] for u in existing_users}
+ 
+    inserts_emp, inserts_user, updates = [], [], []
+ 
+    for emp, user in zip(employees, users):
+        eid = emp.employee_id
+        emp_data = convert_dates_for_mongo(emp.model_dump(by_alias=False))
+        user_data = user.model_dump(by_alias=False)
+ 
+        if eid not in emp_map:
+            emp_data["status"] = True
+            inserts_emp.append(emp_data)
+            inserts_user.append(user_data)
+        else:
+            if not emp_map[eid].get("status"):
+                updates.append({"filter": {"employee_id": eid}, "update": {"$set": {"status": True}}})
+            updates.append({"filter": {"employee_id": eid}, "update": {"$set": emp_data}})
+            if str(eid) not in user_set:
+                inserts_user.append(user_data)
+ 
+    if inserts_emp:  await collections["employees"].insert_many(inserts_emp, ordered=False)
+    if inserts_user: await collections["users"].insert_many(inserts_user, ordered=False)
+    for op in updates:
+        await collections["employees"].update_one(op["filter"], op["update"])
+ 
+    return {
+        "employees_inserted": len(inserts_emp),
+        "employees_updated": len(updates),
+        "users_inserted": len(inserts_user),
+    }
+    
+def read_csv_file(content: bytes):
+    """Read CSV reliably even if corrupted or irregular."""
+    # Detect encoding
+    enc = chardet.detect(content).get("encoding") or "utf-8"
+
+    text = content.decode(enc, errors="ignore")
+    stream = StringIO(text)
+
+
+    reader = csv.reader(stream)
+
+    # Remove completely empty rows
+    rows = [row for row in reader if any(cell.strip() for cell in row)]
+
+    if not rows:
+        return None  # No data
+
+    # Convert to DataFrame-like object
+    header = rows[0]
+    data_rows = rows[1:]
+
+    # Normalize row lengths
+    data = [row + [""] * (len(header) - len(row)) for row in data_rows]
+
+    df = pd.DataFrame(data, columns=header)
+    return df

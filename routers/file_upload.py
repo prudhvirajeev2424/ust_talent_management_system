@@ -22,7 +22,54 @@ from exceptions.file_upload_exceptions import FileFormatException,ValidationExce
  
 file_upload_router = APIRouter(prefix="/api/upload")
  
-
+@file_upload_router.post("/employees")
+async def upload_career_velocity(file: UploadFile = File(...),current_user=Depends(get_current_user)):
+    if current_user["role"] !="Admin":
+        logger.error(f"Unauthorized attempt of logging for employee data upload")
+        return HTTPException(status_code=409,detail="Not Authorized")
+    content = await file.read()
+    if not file.filename.lower().endswith((".xlsx", ".xls", ".csv")):
+        raise FileFormatException("Only .xlsx, .xls, or .csv files allowed")
+ 
+    # Load file
+    try:
+        df = (pd.read_csv(BytesIO(content), encoding="utf-8", dtype=str, engine="python", on_bad_lines="skip")
+              if file.filename.endswith(".csv") else pd.read_excel(BytesIO(content)))
+        df = df.dropna(how="all")
+    except Exception as e:
+        raise ReportProcessingException(f"Failed to read file: {e}")
+ 
+    required = ["Employee ID", "Employee Name", "Designation", "Band", "City", "Type"]
+    if missing := [c for c in required if c not in df.columns]:
+        raise ValidationException(f"Missing columns: {missing}")
+ 
+    valid_emps, valid_users, errors = [], [], []
+    for idx, row in df.iterrows():
+        row_dict = {k: None if pd.isna(v) else str(v).strip() for k, v in row.to_dict().items()}
+        try:
+            emp = Employee(**row_dict)
+            user = User(employee_id=str(emp.employee_id), role=emp.type)
+            valid_emps.append(emp)
+            valid_users.append(user)
+        except Exception as e:
+            errors.append({"row": idx + 2, "error": str(e)})
+ 
+    await log_upload_action("employees", file.filename,
+                            "CSV" if file.filename.endswith(".csv") else "Excel",
+                            current_user["employee_id"], len(df), len(valid_emps), len(errors), errors[:5])
+ 
+    if not valid_emps:
+        return {"message": "No valid employees found", "errors_sample": errors[:5]}
+ 
+    result = await sync_employees_with_db(valid_emps, valid_users)
+    return {
+        "message": "Career Velocity processed successfully",
+        "processed": len(valid_emps),
+        "failed": len(errors),
+        "errors_sample": errors[:5],
+        "sync": result
+    }
+ 
 
 @file_upload_router.post("/rr-report")
 async def upload_rr_report(file: UploadFile = File(...),current_user=Depends(get_current_user)):
@@ -76,3 +123,29 @@ async def upload_rr_report(file: UploadFile = File(...),current_user=Depends(get
         "failed": len(errors),
         "errors_sample": errors[:5]
     }
+
+
+async def process_updated_rr_report():
+    files = [f for f in os.listdir(UPLOAD_FOLDER)
+             if f.lower().endswith((".xlsx", ".xls", ".csv"))]
+    if not files:
+        return
+ 
+    latest = sorted(files)[-1]
+    src = os.path.join(UPLOAD_FOLDER, latest)
+    dst = os.path.join(PROCESSED_FOLDER, f"{datetime.now():%Y%m%d_%H%M%S}_{latest}")
+ 
+    try:
+        with open(src, "rb") as f:
+            fake_file = UploadFile(filename=latest, file=BytesIO(f.read()))
+        await upload_rr_report(fake_file,{"role":"HM","employee_id":"system"})
+        os.rename(src, dst)
+        logger.info(f"Auto-processed RR: {latest} → processed/")
+    except Exception as e:
+        logger.error(f"Auto RR failed for {latest}: {e}")
+
+scheduler = AsyncIOScheduler()
+scheduler.add_job(process_updated_rr_report, IntervalTrigger(hours=24), id="process_updated_files")
+scheduler.add_job(delete_old_files_in_processed,  IntervalTrigger(days=1) , id="delete_old_files")
+scheduler.start()
+ 
