@@ -1,0 +1,15 @@
+fastapi>=0.104.0
+uvicorn>=0.23.0
+motor>=3.3.0
+pydantic>=2.5.0
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+pandas
+openpyxl
+PyPDF2
+python-docx
+argon2-cffi
+chardet
+apscheduler
+aiofiles
