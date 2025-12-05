@@ -211,4 +211,40 @@ async def update_draft(
  
     return {"message": "Updated"}
  
+# ---------------------------------------------------------------------
+# SUBMIT APPLICATION
+# Move from DRAFT → SUBMITTED
+# ---------------------------------------------------------------------
  
+@application_router.patch("/{app_id}/submit")
+async def update_draft_status(
+    app_id: str,
+    current_user: dict = Depends(get_current_user),):
+   
+    employee_id = int(current_user["employee_id"])
+    print(employee_id)
+ 
+    # _id is a UUID string, employee_id is int in DB
+    app = await collections["applications"].find_one(
+        {"_id": app_id}
+    )
+    print("Found app:", app)
+    if not app:
+        raise HTTPException(404, "Application not found")
+ 
+    # Only drafts can be submitted
+    if app.get("status") != "Draft":
+        raise HTTPException(400, "Only draft applications can be edited")
+    # Update status
+    result = await collections["applications"].update_one(
+        {"_id": app_id},
+        {
+            "$set": {
+                "status": ApplicationStatus.SUBMITTED.value,
+                "submitted_at": datetime.now(timezone.utc),
+            }
+        }
+    )
+    print("Modified count:", result.modified_count)
+    return {"message": "Updated"}
+
