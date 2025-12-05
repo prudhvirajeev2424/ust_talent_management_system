@@ -52,9 +52,9 @@ async def sync_rr_with_db(validated_rrs: List[ResourceRequest]):
  
     # Fetch current state
     existing_rrs = await collections["resource_request"].find(
-        {}, {"Resource Request ID": 1, "rr_status": 1}
+        {}, {"resource_request_id": 1, "rr_status": 1}
     ).to_list(None)
-    rr_map = {r["Resource Request ID"]: r for r in existing_rrs}
+    rr_map = {r["resource_request_id"]: r for r in existing_rrs}
  
     rr_insert, rr_reactivate = [], []
     for rr in validated_rrs:
@@ -64,12 +64,12 @@ async def sync_rr_with_db(validated_rrs: List[ResourceRequest]):
         if rr_id not in rr_map:
             rr_insert.append(rr_data)
         elif not rr_map[rr_id].get("rr_status"):
-            rr_reactivate.append({"filter": {"Resource Request ID": rr_id},
+            rr_reactivate.append({"filter": {"resource_request_id": rr_id},
                                   "update": {"$set": {"rr_status": True}}})
  
    
     # Deactivate removed RRs
-    deactivate_rr = [{"filter": {"Resource Request ID": rid}, "update": {"$set": {"rr_status": False}}}
+    deactivate_rr = [{"filter": {"resource_request_id": rid}, "update": {"$set": {"rr_status": False}}}
                      for rid in rr_map if rid not in uploaded_ids and rr_map[rid].get("rr_status")]
     # Bulk operations
     if rr_insert:   await collections["resource_request"].insert_many(rr_insert, ordered=False)
