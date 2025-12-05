@@ -419,3 +419,87 @@ async def bulk_manual_action(
         "results": results
     }
  
+@manager_router.get("/skill-matches/applications/{job_rr_id}")
+async def get_skill_matches(
+    job_rr_id: str,
+    min_match: Optional[float] = Query(None, ge=0.0, le=100.0),
+    current_user: dict = Depends(get_current_user)
+):
+    job = await collections["resource_request"].find_one({"resource_request_id": job_rr_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job RR not found")
+   
+    role = current_user["role"]
+    emp_id = current_user["employee_id"]
+   
+    if role == "WFM" and job.get("wfm_id") != emp_id:
+        raise HTTPException(403, "You don't manage this job")
+    elif role == "HM" and job.get("hm_id") != emp_id:
+        raise HTTPException(403, "You are not the Hiring Manager for this job")
+    elif role not in ["WFM", "HM", "Admin"]:
+        raise HTTPException(403, "Unauthorized to view skill matches")
+ 
+    required_skills = job.get("mandatory_skills", [])
+    if not required_skills:
+        return {"message": "No required skills defined for this job"}
+ 
+    req_skills = {skill.strip().lower() for skill in required_skills}
+ 
+    pipeline = [
+        {"$match": {"job_rr_id": job_rr_id, "status": "Submitted"}},
+        {"$addFields": {"employee_id_int": {"$toInt": "$employee_id"}}},
+        {"$lookup": {
+            "from": "employees",
+            "localField": "employee_id_int",
+            "foreignField": "employee_id",
+            "as": "employee_data"
+        }},
+        {"$unwind": {"path": "$employee_data", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "_id": 1,
+            "employee_id": 1,
+            "employee_name": "$employee_data.employee_name",
+            "designation": "$employee_data.designation",
+            "city": "$employee_data.city",
+            "skills": "$employee_data.Detailed Skill Set (List of top skills on profile)"
+        }}
+    ]
+   
+    applications = await collections["applications"].aggregate(pipeline).to_list(1000)
+ 
+    results = []
+    for app in applications:
+        if not app.get("employee_name"):
+            continue
+ 
+        emp_skills = {skill.strip().lower() for skill in (app.get("skills") or [])}
+        matched_count = len(emp_skills.intersection(req_skills))
+        match_percentage = (matched_count / len(req_skills)) * 100 if req_skills else 0
+ 
+        if min_match is not None and match_percentage < min_match:
+            continue
+ 
+        results.append({
+            "application_id": str(app["_id"]),
+            "employee_id": app["employee_id"],
+            "employee_name": app.get("employee_name", "Unknown"),
+            "current_designation": app.get("designation"),
+            "location": app.get("city"),
+            "match_percentage": round(match_percentage, 2),
+            "matched_skills": sorted(list(emp_skills.intersection(req_skills))),
+            "missing_skills": sorted(list(req_skills - emp_skills)),
+            "total_required_skills": len(req_skills),
+            "skills_matched_count": matched_count
+        })
+ 
+    results.sort(key=lambda x: x["match_percentage"], reverse=True)
+ 
+    return {
+        "job_rr_id": job_rr_id,
+        "job_title": job.get("title"),
+        "total_applications": len(applications),
+        "candidates_returned": len(results),
+        "required_skills": sorted(list(req_skills)),
+        "min_match_filter_applied": min_match,
+        "candidates": results
+    }
