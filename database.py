@@ -15,5 +15,7 @@ collections = {
     "refresh_tokens": db.refresh_tokens,
     "audit_logs": db.audit_logs,
     "block_list_tokens":db.block_list_tokens,
-    "resource_request":db.resource_request
+    "resource_request":db.resource_request,
+    "admin_logs":db["admin_logs"]
+    
 }
