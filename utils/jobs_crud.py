@@ -368,6 +368,7 @@ async def get_skills_availability(
             # Both filters applied
             return {
                 "hm_id": hm_id,
+                "all_unique_skills": list(all_skills),
                 "resource_requests": rr_skills_mapping,
                 "skills_summary": skills_summary
             }
@@ -377,6 +378,7 @@ async def get_skills_availability(
             return {
                 "hm_id": hm_id,
                 "resource_requests_count": len(resource_requests),
+                "all_unique_skills": list(all_skills),
                 "total_unique_skills": len(all_skills),
                 "resource_requests": rr_skills_mapping,
                 "skills_summary": sorted(skills_summary, key=lambda x: x["employee_count"], reverse=True),
