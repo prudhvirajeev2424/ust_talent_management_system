@@ -1,0 +1,46 @@
+Resource Request ID,RR FTE,Allocated FTE,RR Status,RR Type,Priority,UST - Role,City,State,Country,Altenate Location,Campus,Job Grade,RR Start Date,RR End Date,Account Name,Project ID,Project Name,WFM,WFM ID,HM,HM ID,AM,AM ID,Billable,Actual Bill Rate,Actual Currency,Bill Rate,Billing Frequency,Currency,Target ECR,Accepted Resource Type,Replacement Type,Exclusive to UST,Contract to Hire,Client Job Title,UST Role Description,Job Description,Notes for WFM or TA,Client Interview Required,OBU Name,Project Start Date,Project End Date,Raised On,RR Finance Approved Date,WFM Approved Date,Cancelled Reasons,Edit Requested Date,Resubmitted Date,Duration in Edit(Days),# of Edits,Resubmitted Reason,Comments,Recruiter Name,Recruiter ID,Recruitment Type,Project Type,Last Updated On,Last Activity Date,Last Activity,Contract Category,Mandatory Skills,Optional Skills,RR Skill Group,flag,Matching Resources Count (Score 50% and above),Hiring request Submit Date (MTE),Marked To External,MTE Status,External - System,SO Initiator Name,SO Initiator ID,External Status,Allocation Project ID,Allocation Project Start Date,Allocation Project End Date,Practice Line,TA Cluster Lead,RR Ageing,Duration before Cancellation,Resources in Propose,Resources in HM Check,Resources in Internal Interview,Resources in Customer Interview,Resources in Accept,Resources in Allocated,Resources in Not Allocated,Resources in Reject,Edits Requested,Outgoing Employee Id,Outgoing Employee Name,Cancel Requested,Legal Entity,Company Name
+12345678_1,1.0,,Approved,New Project,P4,SOC Specialist II - Cyber Security,Trivandrum,Kerala,India,,IND-TRV-UST_SEZ Floor 5,B2,2024-04-01,2024-12-31,CyberPROOF,USTI-CYPF-DL-L3,CyberPROOF Security Operations,Anitha Narayanan,184422,Roman Bruk,U68669,Vinod Kartha,U10348,Yes,46.0,USD,46.0,H,USD,75.0,Any,,False,False,," Role Proficiency:
+Manage the onboarding of new customers. Develop and create new operation processes. Lead SOC service for various customers including deep investigation and cyber security subject expertise.  Outcomes:
+  Manage a complete cyber security incident and provide deep investigation Create and manage improvement process for customer services  Working on improving customer detection by adding relevant detection rules Onboarding new customer to SOC service Develop and update operation methodology  Be the point of contact for operational (technical) issues and platform/service improvement Guide SIEM experts Be the cyber security subject expert 
+  Measures of Outcomes:
+  Successful incident management  Successful onboarding of customers to services Successful implementation of improvement programs
+  Outputs Expected:
+Continuous improvement of the services:  Monitoring capability  Investigation process  Operation process  Methodology  Incident management  Mitigation and automation action  
+  Skill Examples:
+   Presentation skill (Verbal) and soft skill (hands on verbal and writing) Excellent analytics skill  Ability to lead activity on cross culture/ geo location team to success in task Accountability  Ability to think out of the box to find solution Project management skills Proficient in programming languages such as C C# Python Perl Java PHP and Ruby on Rails.
+  Knowledge Examples:
+Knowledge Examples  Experience in cyber security discipline  Excellent knowledge of cyber security defence methods (tools topology best practices)  Excellent knowledge on Mitre frameworks (or other common frameworks) Practical experience with developing and implementation processes  Relevant certification in cyber security Advance knowledge with SIEM solution Experience with cloud (working secure monitoring)
+","CyberProof is a cyber security services and platform company whose mission is to help our customers react faster and smarter – and stay ahead of security threats, by creating secure digital ecosystems. CyberProof automates processes to detect and prioritize threats early and respond rapidly and decisively.
+
+CyberProof is seeking a SOC L3 Engineer who will be part of our growing Global Operations & Delivery team, which monitors, investigates, and resolves security incidents, violations, and suspicious activities. Our global Operations group takes innovative approaches and uses the most cutting-edge technologies to transform the operations of our customers and secure the security landscape.
+
+Main Responsibilities
+Act as an escalation point for high and critical severity security incidents, and conduct thorough investigations to determine potential impact and understand extend of compromise;
+Analyse attack patterns, Tools, Techniques and Procedures (TTPs) to identify methods of attacks and attack life cycle;
+Provide recommendations on issue resolution activities such as security controls policy configuration changes and security hygiene improvement;
+Provide guidance on mitigating risks associated with security vulnerabilities;
+Hunt for Indicators of Compromise (IOCs) and signs of Advanced Persistent Threats (APTs) within the Client’s environment;
+Conduct threat hunting by means of in-depth log analysis to identify potential threats that may have evaded automated detection;
+Conduct analysis to gather evidence, validate root cause and analyse extend of compromise leveraging Client’s security toolset;
+Identify gaps and weaknesses in existing security processes and propose enhancements to improve Client’s established incident response methodologies;
+Collaborate with cross-functional teams, to ensure end to end management of security incident lifecycle;
+Document and update incident response processes, define outcomes for future references and drive continuous improvement; and 
+Participate in regular team meetings, Incident Response war room discussions and executive briefing sessions.
+Minimum 2+ years of experience as a SOC L3 Analyst working as part of a Global SOC team
+Resolve, escalate, report, and raise recommendations for resolving and remediating security incidents.
+Be an escalation point for investigations of clients and suggest optimization activities to improve their performance.
+Proactively monitor and review threats and suspicious events from customers participating in the service.
+Handle the advanced monitoring of system logs, SIEM tools, and network traffic for unusual or suspicious activity.
+Set up SIEM solutions and troubleshoot connectivity issues.
+Investigate and resolve security violations by providing post-mortem analysis to illuminate issues and possible solutions.
+Collate security incident and event data to produce monthly exception and management reports.
+Report unresolved network security exposure, misuse of resources, or noncompliance situations using defined escalation processes.
+Assist and train team members in the use of security tools, the preparation of security reports, and the resolution of security issues.
+Develop and maintain documentation for security systems and procedures.
+Experience in handling Linux servers, familiar with Linux OS and commands
+
+Requirements
+Maintain excellent customer satisfaction through professional, proactive and personal service.
+Experience with SIEM vendors such as QRadar, ArcSight, RSA, and LogRhythm
+Experience in incident response, and in writing procedures runbooks and playbooks
+Ability to work with customer’s IT and security teams",SOC L3 for Go Daddy,Yes,CyberPROOF,2023-02-01,2025-12-31,2024-03-27,2025-01-27,,,,2025-01-27,,,,,Praise Pullooruthikary Tharian,246096,Lateral Hiring,Non T&M,2025-01-24,2025-01-27 10:13:00+00:00,Approved,,"['[""[\'Investigation\'""', '""\'Cyber Security\'""', '""\'Root Cause Anal\'""', '""\'Level 3 Security Analysis\']""]']",[],[],True,0,2024-04-05,Yes,approved,RH,Arul John Mathew,U91131,,USTI-CYPF-DL-L3,2023-02-01,2025-12-31,,229372,138,,0,0,0,0,0,0,0,0,no,,,no,US Technology International Private Limited,UST
