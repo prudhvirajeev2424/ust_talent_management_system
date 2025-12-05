@@ -141,7 +141,7 @@ async def get_manager_applications(current_user: dict, page: int = 1, limit: int
         non_tp_emp_ids = [str(e["employee_id"]) async for e in collections["employees"].find({"type": "Non TP"}, {"employee_id": 1})]
         query = {
             "$or": [
-                {"job_rr_id": {"$in": job_rr_ids}, "status": {"$nin": ["Draft", "Allocated"," Rejected", "Selected","Withdrawn"]}},
+                {"job_rr_id": {"$in": job_rr_ids}, "status": {"$nin": ["Draft", "Allocated","Rejected", "Selected","Withdrawn"]}},
                 {"job_rr_id": {"$in": job_rr_ids}, "employee_id": {"$in": non_tp_emp_ids}, "status": "Submitted"}
             ]
         }
