@@ -9,7 +9,7 @@ from routers.application import application_router
 import os
 load_dotenv()
 
-from routers import auth
+from routers import auth,admin_logs
 from utils.security import get_current_user
 from routers import manager_workflow
 # , file_upload, job, employee, application, manager_workflow, admin
@@ -35,6 +35,7 @@ db = client.talent_management
 # def root():
 #     return {"message": "Talent Management System API"}
 app.include_router(auth.router, tags=["Auth"])
+app.include_router(admin_logs.router,prefix="/api/admin/activity",tags=["Admin Logs"])
 app.include_router(jobs_router, tags=["Jobs"])
 app.include_router(application_router, tags=["Applications"])
 app.include_router(manager_workflow.manager_router,tags=["Manager Workflow"])
