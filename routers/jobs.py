@@ -74,3 +74,28 @@ async def get_skills_availability(
     except Exception as e:
         # Handle errors
         raise HTTPException(status_code=400, detail=f"Error: {e}")
+
+
+# Endpoint to patch a single field on a ResourceRequest (HM only)
+@jobs_router.patch("/patch")
+async def patch_resource_request(
+    request_id: str,
+    key: str,
+    value: Any = Body(...),
+    current_user=Depends(get_current_user),
+):
+    # Only HM allowed to patch
+    if current_user["role"] != "HM":
+        raise HTTPException(status_code=403, detail="Not Authorized")
+
+    try:
+        result = await jobs_crud.patch_resource_request_single(request_id, key, value, current_user)
+        if result:
+            return {"detail": "ResourceRequest patched successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="No document updated")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error: {e}")
+    
