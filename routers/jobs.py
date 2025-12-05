@@ -89,38 +89,50 @@ async def patch_resource_request(
     value: Any = Body(...),
     current_user=Depends(get_current_user),
 ):
-    # Only HM allowed to patch
+    # Check if the current user has the role of "HM" (Hiring Manager)
     if current_user["role"] != "HM":
+        # If the user is not an "HM", raise an HTTPException with a 403 status code (Forbidden)
         raise HTTPException(status_code=403, detail="Not Authorized")
 
     try:
+        # Call the CRUD function to patch a specific field in the resource request
         result = await jobs_crud.patch_resource_request_single(request_id, key, value, current_user)
+        # If the patch is successful (result is True), return a success message
         if result:
             return {"detail": "ResourceRequest patched successfully"}
         else:
+            # If no document is updated, raise an HTTPException with a 400 status code (Bad Request)
             raise HTTPException(status_code=400, detail="No document updated")
     except PermissionError as e:
+        # If a PermissionError is raised during the operation, return a 403 Forbidden HTTPException
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
+        # Catch any other exceptions and return a 400 Bad Request HTTPException with the error message
         raise HTTPException(status_code=400, detail=f"Error: {e}")
     
     
 @jobs_router.delete("/delete")
 async def delete_resource_request(
+    # The unique ID of the resource request to be deleted
     request_id: str,
     current_user=Depends(get_current_user)
 ):
-    # Only HM allowed to patch
+    # Check if the current user has the role of "HM" (Hiring Manager)
     if current_user["role"] != "HM":
+        # If the user is not an "HM", raise an HTTPException with a 403 status code (Forbidden)
         raise HTTPException(status_code=403, detail="Not Authorized")
  
     try:
+         # Call the CRUD function to delete the resource request by its ID
         result = await jobs_crud.delete_resource_request(request_id, current_user)
         if result:
             return {"detail": "ResourceRequest Deleted successfully"}
         else:
+            # If the deletion is successful (result is True), return a success message
             raise HTTPException(status_code=400, detail="No document Found")
+        # If a PermissionError is raised during the operation, return a 403 Forbidden HTTPException
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
+        # Catch any other exceptions and return a 400 Bad Request HTTPException with the error message
         raise HTTPException(status_code=400, detail=f"Error: {e}")
