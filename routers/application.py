@@ -248,3 +248,27 @@ async def update_draft_status(
     print("Modified count:", result.modified_count)
     return {"message": "Updated"}
 
+# ---------------------------------------------------------------------
+# WITHDRAW APPLICATION
+# Cannot withdraw once shortlisted/interviewed/selected/allocated
+# ---------------------------------------------------------------------
+ 
+@application_router.delete("/{app_id}")
+async def withdraw(app_id: str, current_user: dict = Depends(get_current_user)):
+    print(app_id)
+   
+    # Find application
+    app = await collections["applications"].find_one({"_id": app_id})
+   
+    # Restrict withdrawal for certain statuses
+    if not app or app["status"] in [
+        ApplicationStatus.SHORTLISTED, ApplicationStatus.INTERVIEW, ApplicationStatus.SELECTED, ApplicationStatus.ALLOCATED]:
+        raise HTTPException(400, "Cannot withdraw")
+   
+     # Mark as withdrawn
+    await collections["applications"].update_one(
+        {"_id": app_id},
+        {"$set": {"status": ApplicationStatus.WITHDRAWN}}
+    )
+    return {"message": "Withdrawn"}
+
