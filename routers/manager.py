@@ -175,6 +175,56 @@ async def list_applications(
 ):
     return await get_manager_applications(current_user, page, limit)
 
+@manager_router.patch("/applications/{app_id}/shortlist")
+async def shortlist(app_id: str, current_user: dict = Depends(get_current_user)):
+    app = await collections["applications"].find_one({"_id": app_id})
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app["status"] != "Submitted":
+        raise HTTPException(400, f"Cannot shortlist: application is in '{app['status']}' status")
+   
+    employee_id_str = app.get("employee_id")
+    if not employee_id_str:
+        raise HTTPException(400, "Application missing employee_id")
+   
+    emp = await get_employee_safely(employee_id_str)
+    emp_type = emp.get("type", "Unknown")
+ 
+    if current_user["role"] == "TP Manager" and emp_type == "TP":
+        result = await collections["applications"].update_one(
+            {"_id": app_id},
+            {"$set": {
+                "status": "Shortlisted",
+                "shortlisted_by": current_user["employee_id"],
+                "shortlisted_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        if result.modified_count:
+            await log_audit("shortlist_tp", app_id, current_user["employee_id"])
+            await update_job_stats_and_employee_type(app_id)
+        return {"message": "Shortlisted by TP Manager"}
+ 
+    elif current_user["role"] == "WFM" and emp_type == "Non TP":
+        if not await verify_job_ownership(app["job_rr_id"], current_user["employee_id"], "WFM"):
+            raise HTTPException(403, "You don't manage this job")
+        result = await collections["applications"].update_one(
+            {"_id": app_id},
+            {"$set": {
+                "status": "Shortlisted",
+                "shortlisted_by": current_user["employee_id"],
+                "shortlisted_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        if result.modified_count:
+            await log_audit("shortlist_non_tp", app_id, current_user["employee_id"])
+            await update_job_stats_and_employee_type(app_id)
+        return {"message": "Shortlisted by WFM"}
+ 
+    raise HTTPException(403, f"Cannot shortlist: {current_user['role']} cannot shortlist {emp_type} employees")
+ 
+
 @manager_router.patch("/applications/{app_id}/interview")
 async def to_interview(
     app_id: str,
@@ -212,6 +262,77 @@ async def to_interview(
         return {"message": f"Moved to {interview_type.title()} Interview", "previous_status": app["status"]}
  
     raise HTTPException(500, "Failed to update application")
+
+@manager_router.patch("/applications/{app_id}/select")
+async def select_candidate(app_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "WFM":
+        raise HTTPException(403, "Only WFM can select candidates")
+   
+    app = await collections["applications"].find_one({"_id": app_id})
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app["status"] != "Interview":
+        raise HTTPException(400, f"Cannot select: application is in '{app['status']}' status. Must be 'Interview'.")
+   
+    if not await verify_job_ownership(app["job_rr_id"], current_user["employee_id"], "WFM"):
+        raise HTTPException(403, "You don't manage this job")
+   
+   
+    result = await collections["applications"].update_one(
+        {"_id": app_id},
+        {"$set": {
+            "status": "Selected",
+            "selected_by": current_user["employee_id"],
+            "selected_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+   
+    if result.modified_count:
+        await log_audit("select_candidate", app_id, current_user["employee_id"])
+        await update_job_stats_and_employee_type(app_id)
+        return {"message": "Candidate Selected"}
+   
+    raise HTTPException(500, "Failed to select candidate")
+
+@manager_router.patch("/applications/{app_id}/reject")
+async def reject_candidate(
+    app_id: str,
+    reason: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "WFM":
+        raise HTTPException(403, "Only WFM can reject candidates")
+   
+    app = await collections["applications"].find_one({"_id": app_id})
+    if not app:
+        raise HTTPException(404, "Application not found")
+   
+    if not await verify_job_ownership(app["job_rr_id"], current_user["employee_id"], "WFM"):
+        raise HTTPException(403, "You don't manage this job")
+   
+    if app["status"] == "Allocated":
+        raise HTTPException(400, "Cannot reject: candidate is already allocated")
+    if app["status"] == "Selected":
+        raise HTTPException(400, "Cannot reject: candidate is selected. Contact HM to deallocate first.")
+   
+    result = await collections["applications"].update_one(
+        {"_id": app_id},
+        {"$set": {
+            "status": "Rejected",
+            "rejected_by": current_user["employee_id"],
+            "rejected_at": datetime.utcnow(),
+            "rejection_reason": reason,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+   
+    if result.modified_count:
+        await log_audit("reject_candidate", app_id, current_user["employee_id"], {"reason": reason})
+        await update_job_stats_and_employee_type(app_id)
+        return {"message": "Candidate Rejected"}
+   
+    raise HTTPException(500, "Failed to reject candidate")
 
 @manager_router.patch("/applications/{app_id}/allocate")
 async def allocate(app_id: str, current_user: dict = Depends(get_current_user)):
@@ -251,35 +372,50 @@ async def allocate(app_id: str, current_user: dict = Depends(get_current_user)):
    
     raise HTTPException(500, "Failed to allocate candidate")
  
-@manager_router.patch("/applications/{app_id}/select")
-async def select_candidate(app_id: str, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "WFM":
-        raise HTTPException(403, "Only WFM can select candidates")
+@manager_router.patch("/bulk/applications/{action}")
+async def bulk_manual_action(
+    action: Literal["shortlist", "select", "reject", "allocate"],
+    app_ids: List[str] = Query(...),
+    current_user: dict = Depends(get_current_user)
+):
+    if not app_ids:
+        raise HTTPException(400, "No application IDs provided")
+    if len(app_ids) > 100:
+        raise HTTPException(400, "Maximum 100 applications per bulk operation")
+ 
+    allowed = {
+        "TP Manager": {"shortlist"},
+        "WFM": {"shortlist", "select", "reject"},
+        "HM": {"allocate"},
+        "Admin": {"shortlist", "select", "reject", "allocate"}
+    }
    
-    app = await collections["applications"].find_one({"_id": app_id})
-    if not app:
-        raise HTTPException(404, "Application not found")
-    if app["status"] != "Interview":
-        raise HTTPException(400, f"Cannot select: application is in '{app['status']}' status. Must be 'Interview'.")
-   
-    if not await verify_job_ownership(app["job_rr_id"], current_user["employee_id"], "WFM"):
-        raise HTTPException(403, "You don't manage this job")
-   
-   
-    result = await collections["applications"].update_one(
-        {"_id": app_id},
-        {"$set": {
-            "status": "Selected",
-            "selected_by": current_user["employee_id"],
-            "selected_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }}
-    )
-   
-    if result.modified_count:
-        await log_audit("select_candidate", app_id, current_user["employee_id"])
-        await update_job_stats_and_employee_type(app_id)
-        return {"message": "Candidate Selected"}
-   
-    raise HTTPException(500, "Failed to select candidate")
+    if action not in allowed.get(current_user["role"], set()):
+        raise HTTPException(403, f"Role '{current_user['role']}' cannot perform '{action}' action")
+ 
+    results = []
+    for app_id in app_ids:
+        try:
+            if action == "shortlist":
+                resp = await shortlist(app_id, current_user)
+            elif action == "select":
+                resp = await select_candidate(app_id, current_user)
+            elif action == "reject":
+                resp = await reject_candidate(app_id, current_user)
+            elif action == "allocate":
+                resp = await allocate(app_id, current_user)
+           
+            results.append({"app_id": app_id, "status": "success", "message": resp["message"]})
+        except HTTPException as e:
+            results.append({"app_id": app_id, "status": "failed", "error": str(e.detail)})
+        except Exception as e:
+            results.append({"app_id": app_id, "status": "failed", "error": f"Unexpected error: {str(e)}"})
+ 
+    return {
+        "action": action,
+        "total": len(app_ids),
+        "successful": len([r for r in results if r["status"] == "success"]),
+        "failed": len([r for r in results if r["status"] == "failed"]),
+        "results": results
+    }
  
