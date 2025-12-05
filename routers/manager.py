@@ -212,3 +212,42 @@ async def to_interview(
         return {"message": f"Moved to {interview_type.title()} Interview", "previous_status": app["status"]}
  
     raise HTTPException(500, "Failed to update application")
+
+@manager_router.patch("/applications/{app_id}/allocate")
+async def allocate(app_id: str, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "HM":
+        raise HTTPException(403, "Only HM can allocate resources")
+   
+    app = await collections["applications"].find_one({"_id": app_id})
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app["status"] != "Selected":
+        raise HTTPException(400, f"Cannot allocate: application is in '{app['status']}' status. Must be 'Selected'.")
+   
+    job = await collections["resource_request"].find_one({
+        "resource_request_id": app["job_rr_id"],
+        "hm_id": current_user["employee_id"]
+    })
+    if not job:
+        raise HTTPException(403, "You are not the Hiring Manager for this job")
+   
+    if await check_duplicate_allocation(app["employee_id"]):
+        raise HTTPException(400, "Employee is already allocated to another project")
+ 
+    result = await collections["applications"].update_one(
+        {"_id": app_id},
+        {"$set": {
+            "status": "Allocated",
+            "allocated_by": current_user["employee_id"],
+            "allocated_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+   
+    if result.modified_count:
+        await log_audit("allocate_candidate", app_id, current_user["employee_id"])
+        await update_job_stats_and_employee_type(app_id)
+        return {"message": "Allocated Successfully"}
+   
+    raise HTTPException(500, "Failed to allocate candidate")
+ 
