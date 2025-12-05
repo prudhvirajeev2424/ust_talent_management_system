@@ -425,7 +425,7 @@ async def patch_resource_request_single(request_id: str, key: str,value: Any,cur
  
                 if result.matched_count == 0:
                     logger.error(
-                            f"No matching ResourceRequest found for patch. request_id={request_id}, hm_id={current_user["employee_id"]}"
+                            f"No matching ResourceRequest found for patch. request_id={request_id}, hm_id={current_user['employee_id']}"
                         )
                     raise PermissionError("ResourceRequest not found or not owned by this HM.")
                 logger.info(f"Performed the patch on Resource Request ID : {request_id} under HM ID:{current_user['employee_id']}")
