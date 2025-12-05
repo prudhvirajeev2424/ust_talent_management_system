@@ -60,6 +60,7 @@ async def get_hm_employees(
     current_user: Dict[str, Any] = Depends(role_guard("HM"))
    
 ):
+    
     try:
         # Get the job record using `hm_id`
         job_rr = await resouce_request_col.find_one({"hm_id": hm_id})
@@ -174,7 +175,8 @@ async def get_employees_from_applications(current_user: Dict[str, Any] = Depends
     
 # ====================== SEARCH (FINAL - WITH EMPLOYEE TYPE) ======================
 @router.get("/search")
-async def search_employees(search: str = Query(..., min_length=1),current_user: Dict[str, Any] = Depends(get_current_user)):
+async def search_employees(search: str = Query(..., min_length=1),
+                            current_user: Dict[str, Any] = Depends(role_guard("Admin"))):
    
     query = {
         "$or": [
@@ -215,7 +217,10 @@ async def filter_employees(
     band: Optional[str] = Query(None, description="e.g. A3, B1"),
     designation: Optional[str] = Query(None, description="e.g. Tester III"),
     primary_tech: Optional[str] = Query(None, alias="primary", description="e.g. Java"),
-    secondary_tech: Optional[str] = Query(None, alias="secondary", description="e.g. Angular"),current_user: Dict[str, Any] = Depends(get_current_user)):
+    secondary_tech: Optional[str] = Query(None, alias="secondary", description="e.g. Angular"),
+    current_user: Dict[str, Any] = Depends(role_guard("Admin"))
+    
+    ):
  
     query: Dict[str, Any] = {}
  
@@ -265,7 +270,7 @@ async def sort_employees(
         "asc",
         description="asc or desc",
         regex="^(?i)(asc|desc)$"  # also accepts ASC, Desc, etc.
-    ),current_user: Dict[str, Any] = Depends(get_current_user)
+    ),current_user: Dict[str, Any] = Depends(role_guard("Admin"))
 ):
     """
     Sort by:
@@ -306,7 +311,7 @@ async def sort_employees(
  
 # ====================== LIST ALL EMPLOYEES ======================
 @router.get("/employees", response_model=List[Dict[str, Any]])
-async def get_employees(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_employees(current_user: Dict[str, Any] = Depends(role_guard("Admin"))):
     try:
         employees_list = await fetch_all_employees()
         return employees_list
@@ -315,11 +320,9 @@ async def get_employees(current_user: Dict[str, Any] = Depends(get_current_user)
             status_code=500,
             detail=f"Error fetching employees: {str(e)}"
         )
- 
- 
 # ====================== GET SINGLE EMPLOYEE ======================
 @router.get("/{employee_id}", response_model=Dict[str, Any])
-async def get_employee(employee_id: int,current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_employee(employee_id: int,current_user: Dict[str, Any] = Depends(role_guard("Admin"))):
     try:
         emp = await fetch_employee_by_id(employee_id)
         if not emp:
@@ -336,154 +339,149 @@ async def get_employee(employee_id: int,current_user: Dict[str, Any] = Depends(g
             detail=f"Error fetching employee: {str(e)}"
         )
        
- 
-# ====================== RESUME UPLOAD & PARSING ======================    
- 
-def clean_text(text: str) -> str:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return "\n".join(lines)
- 
-@resume_router.put("/upload/{employee_id}")
-async def upload_resume(
-    employee_id: int,
-    file: UploadFile = File(...),
+
+
+# ====================== RESUME DOWNLOAD - ONLY OWN RESUME ======================
+@router.get("/my-resume")  # ← New clean endpoint
+async def get_my_resume(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    allowed_types = [
-        "application/pdf",
-        "application/msword",  # .doc
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"  # .docx
-    ]
-   
-    # Validate file type
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Only PDF, DOC, and DOCX files are allowed")
- 
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
- 
-    # Save original file to GridFS
+    employee_id = current_user.get("employee_id")
+    if not employee_id:
+        raise HTTPException(status_code=401, detail="Invalid user session")
+
     try:
-        file_id = save_to_gridfs(file.filename, file_bytes)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving file to GridFS: {str(e)}")
- 
-    # Extract text using the new unified function
-    try:
-        raw_text = extract_text_from_bytes(file_bytes, file.filename)
-        extracted_text = clean_text(raw_text) if 'clean_text' in globals() else raw_text.strip()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
- 
-    # Parse with LLM (optional)
-    parsed_resume = None
-    try:
-        parsed_resume = await parse_resume_with_llm(extracted_text)
-       
-    except Exception as e:
-        print(f"LLM parsing failed (continuing anyway): {e}")
- 
-    # Update employee record
-    update_body = {
-        "resume": file_id,
-        "resume_text": parsed_resume or extracted_text,
-    }
- 
-    result = await employees.update_one(
-        {"employee_id": employee_id},  # Make sure your DB uses "employee_id" (lowercase)
-        {"$set": update_body}
-    )
- 
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Employee not found")
- 
-    return {
-        "message": "Resume uploaded and processed successfully",
-        "filename": file.filename,
-        "file_id": file_id,
-        "raw_text_length": len(extracted_text),
-        "llm_parsed": bool(parsed_resume),
-        "preview": (parsed_resume or extracted_text)[:500]
-    }
-   
- 
-@router.get("/resume/{employee_id}")
-async def get_employee_resume(employee_id: int,current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        # Fetch employee with only needed fields
         employee = await employees.find_one(
-            {"employee_id": employee_id},
-            {"resume": 1, "resume_file_id": 1, "employee_name": 1}
+            {"employee_id": int(employee_id)},
+            {"resume_file_id": 1, "resume": 1, "employee_name": 1}
         )
- 
         if not employee:
-            raise HTTPException(status_code=404, detail="Employee not found")
- 
+            raise HTTPException(status_code=404, detail="Your profile not found")
+
         file_id = None
-        filename = f"Resume_{employee_id}.pdf"
- 
-        # Step 1: Try correct field first (new uploads)
+        filename = f"Resume_{employee_id}_{employee.get('employee_name', 'Employee')}.pdf".replace(" ", "_")
+
+        # Try new field first
         if employee.get("resume_file_id"):
             try:
-                oid = ObjectId(employee["resume_file_id"]) if isinstance(employee["resume_file_id"], str) else employee["resume_file_id"]
+                oid = ObjectId(employee["resume_file_id"])
                 if get_gridfs().get(oid):
                     file_id = oid
                     filename = employee.get("resume") or filename
             except:
                 pass
- 
-        # Step 2: Fallback — old bug: "resume" field has ObjectId string
+
+        # Fallback to old field (legacy support)
         if not file_id and employee.get("resume"):
             val = employee["resume"]
-            if isinstance(val, str) and len(val) == 24 and ObjectId.is_valid(val):
+            if isinstance(val, (str, ObjectId)) and ObjectId.is_valid(str(val)):
                 try:
-                    oid = ObjectId(val)
+                    oid = ObjectId(str(val))
                     if get_gridfs().get(oid):
                         file_id = oid
-                        name = employee.get("employee_name", "Employee").replace(" ", "_")
-                        filename = f"{name}_Resume.pdf"
                 except:
                     pass
- 
+
         if not file_id:
-            raise HTTPException(status_code=404, detail="No resume uploaded for this employee")
- 
-        # CRITICAL: Use sync GridFS → NO AWAIT!
+            raise HTTPException(status_code=404, detail="You have not uploaded a resume yet")
+
         grid_out = get_gridfs().get(file_id)
-        if not grid_out:
-            raise HTTPException(status_code=404, detail="Resume file not found in storage")
- 
-        # Read file content — sync, no await!
         file_data = grid_out.read()
- 
-        # Get filename safely
         final_filename = grid_out.filename or filename
- 
-        # Detect MIME type
+
         mime_type, _ = mimetypes.guess_type(final_filename)
         if not mime_type:
-            # Fallback from GridFS metadata or default
-            mime_type = getattr(grid_out, "content_type", None) or "application/pdf"
- 
+            mime_type = "application/pdf"
+
         return Response(
             content=file_data,
             media_type=mime_type,
             headers={
                 "Content-Disposition": f'attachment; filename="{final_filename}"',
                 "Content-Length": str(grid_out.length),
-                "Cache-Control": "no-cache",
             }
         )
- 
+
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[RESUME ERROR] Employee {employee_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve resume")
+        print(f"[MY-RESUME ERROR] Employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to download your resume")
+    
+     
+ 
+
+
+# ====================== RESUME UPLOAD & PARSING ======================    
+ 
+def clean_text(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
  
  
- 
- 
+ # ====================== RESUME UPLOAD - ONLY OWN RESUME ======================
+@resume_router.put("/upload")  # ← Removed {employee_id} from path
+async def upload_resume(
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)  # This gives us the logged-in user
+):
+    employee_id = current_user.get("employee_id")  # Extract from token
+    if not employee_id:
+        raise HTTPException(status_code=401, detail="Invalid user session")
+
+    allowed_types = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ]
+
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only PDF, DOC, and DOCX files are allowed")
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    # Save to GridFS
+    try:
+        file_id = save_to_gridfs(file.filename, file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+
+    # Extract text
+    try:
+        raw_text = extract_text_from_bytes(file_bytes, file.filename)
+        extracted_text = clean_text(raw_text) if 'clean_text' in globals() else raw_text.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
+
+    # Optional LLM parsing
+    parsed_resume = None
+    try:
+        parsed_resume = await parse_resume_with_llm(extracted_text)
+    except Exception as e:
+        print(f"LLM parsing failed (continuing): {e}")
+
+    # Update ONLY the logged-in employee's record
+    update_body = {
+        "resume_file_id": str(file_id),   # Recommended: store as string
+        "resume": file.filename,
+        "resume_text": parsed_resume or extracted_text,
+    }
+
+    result = await employees.update_one(
+        {"employee_id": int(employee_id)},
+        {"$set": update_body}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Your profile not found")
+
+    return {
+        "message": "Your resume has been uploaded and processed successfully!",
+        "filename": file.filename,
+        "file_id": str(file_id),
+        "raw_text_length": len(extracted_text),
+        "llm_parsed": bool(parsed_resume),
+    }
+
