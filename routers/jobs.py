@@ -99,3 +99,23 @@ async def patch_resource_request(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error: {e}")
     
+    
+@jobs_router.delete("/delete")
+async def delete_resource_request(
+    request_id: str,
+    current_user=Depends(get_current_user)
+):
+    # Only HM allowed to patch
+    if current_user["role"] != "HM":
+        raise HTTPException(status_code=403, detail="Not Authorized")
+ 
+    try:
+        result = await jobs_crud.delete_resource_request(request_id, current_user)
+        if result:
+            return {"detail": "ResourceRequest Deleted successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="No document Found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error: {e}")
