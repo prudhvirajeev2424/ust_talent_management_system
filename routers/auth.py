@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends,Request
 from jose import JWTError, jwt, ExpiredSignatureError
 from datetime import timedelta, datetime, timezone
 from fastapi.security import HTTPBearer
 from database import collections
+from utils.activity_logger import log_employee_activity
 from utils.security import (
     verify_password,        # Function to verify user password
     create_access_token,    # Function to create access token
@@ -19,7 +20,7 @@ bearer_scheme = HTTPBearer()
 
 # Login endpoint: Allows a user to log in with username and password
 @router.post("/login")
-async def login(username: str, password: str):
+async def login(username: str, password: str, request: Request):
     # Find the user by employee_id (username)
     user = await collections["users"].find_one({"employee_id": username})
     
@@ -39,6 +40,7 @@ async def login(username: str, password: str):
         "created_at": datetime.now(timezone.utc),
         "expires_at": datetime.now(timezone.utc) + timedelta(days=7)  # Refresh token valid for 7 days
     })
+    await log_employee_activity(user, "login", {"ip": request.client.host})
 
     # Return the generated tokens and their expiration info
     return {
