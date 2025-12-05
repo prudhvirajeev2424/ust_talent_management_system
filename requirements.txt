@@ -13,3 +13,6 @@ argon2-cffi
 chardet
 apscheduler
 aiofiles
+PyMuPDF
+httpx
+ 
