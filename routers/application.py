@@ -5,7 +5,7 @@ import uuid
 from gridfs import GridFS,GridFSBucket
 from pymongo.database import Database
 from database import collections
-from models import Application, ApplicationStatus, UserRole
+from models import Application, ApplicationStatus
 from utils.security import get_current_user
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient,AsyncIOMotorGridFSBucket

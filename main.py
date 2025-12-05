@@ -4,7 +4,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from routers.jobs import jobs_router
 from routers.file_upload import file_upload_router
-# from routers.application import application_router
+from routers.application import application_router
+
 
 import os
 load_dotenv()
@@ -37,7 +38,7 @@ db = client.talent_management
 app.include_router(auth.router, tags=["Auth"])
 app.include_router(admin_logs.router,prefix="/api/admin/activity",tags=["Admin Logs"])
 app.include_router(jobs_router, tags=["Jobs"])
-# app.include_router(application_router, tags=["Applications"])
+app.include_router(application_router, tags=["Applications"])
 # app.include_router(manager_workflow.manager_router,tags=["Manager Workflow"])
 app.include_router(file_upload_router, tags=["File Upload"])
 
