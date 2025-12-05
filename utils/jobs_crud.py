@@ -53,8 +53,12 @@ async def get_jobs(location: Optional[str], current_user):
     
         # Admin has access to all jobs
         if role == "Admin" or role=="TP Manager":
-            cursor = db.resource_request.find({}) 
-            # Fetch the jobs as a list
+            
+            # Fetch the jobs as a list 
+            query={}
+            if location:
+                query["city"] = location
+            cursor = db.resource_request.find(query)
             docs = await cursor.to_list(length=100)
             for d in docs:
                 d["_id"] = str(d["_id"])
@@ -133,7 +137,8 @@ async def get_jobs(location: Optional[str], current_user):
 #     - HM : jobs where hm_id== current_user 
 async def jobs_under_manager(current_user):
     
-    role = current_user["role"]
+    role= current_user["role"]
+    print(role)
     
     # WFM role can access jobs based on WFM ID
     if role == "WFM":
@@ -154,8 +159,7 @@ async def jobs_under_manager(current_user):
             d["_id"] = str(d["_id"])
         logger.info(f"Accessing jobs under hm_id: {current_user["employee_id"]}")
         return docs
-
-
+    
     
 # Function to create a job and associated resource request, and write to a CSV file
 async def create_resource_request(job_data: ResourceRequest, current_user):

@@ -18,36 +18,74 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 # Define the bearer authentication scheme
 bearer_scheme = HTTPBearer()
 
-# Login endpoint: Allows a user to log in with username and password
+from datetime import datetime, timedelta, timezone
+from fastapi import HTTPException
+
 @router.post("/login")
-async def login(username: str, password: str, request: Request):
-    # Find the user by employee_id (username)
+async def login(username: str, password: str, request:Request):
+    # Check if user is blocked
+    attempt = await collections["login_attempts"].find_one({"employee_id": username})
+    blocked_until = attempt.get("blocked_until") if attempt else None
+
+    # Normalize blocked_until to UTC-aware before comparing
+    if blocked_until:
+        if blocked_until.tzinfo is None:
+            blocked_until = blocked_until.replace(tzinfo=timezone.utc)
+
+        if blocked_until > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=403,
+                detail="Account temporarily blocked. Try again later."
+            )
+
+    # Verify user credentials
     user = await collections["users"].find_one({"employee_id": username})
-    
-    # If user not found or password is invalid, raise an HTTP exception
     if not user or not verify_password(password, user["password"]):
+        # Record failed attempt
+        if not attempt:
+            await collections["login_attempts"].insert_one({
+                "employee_id": username,
+                "failed_count": 1,
+                "blocked_until": None,
+                "last_attempt": datetime.now(timezone.utc)
+            })
+        else:
+            failed_count = attempt.get("failed_count", 0) + 1
+            blocked_until = None
+            if failed_count >= 3:
+                blocked_until = datetime.now(timezone.utc) + timedelta(seconds=30)
+                failed_count = 0  # reset after block
+            await collections["login_attempts"].update_one(
+                {"employee_id": username},
+                {"$set": {
+                    "failed_count": failed_count,
+                    "blocked_until": blocked_until,
+                    "last_attempt": datetime.now(timezone.utc)
+                }}
+            )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Create an access token (JWT) for the user with employee_id and role
+    # Reset attempts on successful login
+    await collections["login_attempts"].delete_one({"employee_id": username})
+
+    # Issue tokens
     access_token = create_access_token({"sub": user["employee_id"], "role": user["role"]})
-    # Create a refresh token for the user
     refresh_token = create_refresh_token({"sub": user["employee_id"], "role": user["role"]})
 
-    # Store the refresh token in the database with its expiration date
     await collections["refresh_tokens"].insert_one({
         "token": refresh_token,
         "employee_id": user["employee_id"],
         "created_at": datetime.now(timezone.utc),
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7)  # Refresh token valid for 7 days
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7)
     })
+    
     await log_employee_activity(user, "login", {"ip": request.client.host})
 
-    # Return the generated tokens and their expiration info
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer",  # JWT bearer token type
-        "expires_in": "300 seconds"  # Access token expiration time
+        "token_type": "bearer",
+        "expires_in": 300
     }
 
 # Refresh endpoint: Allows the user to refresh their access token using a valid refresh token

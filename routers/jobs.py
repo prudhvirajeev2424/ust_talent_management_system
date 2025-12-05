@@ -19,7 +19,12 @@ async def get_all_jobs(location: Optional[str] = None, current_user=Depends(get_
 
 @jobs_router.get("/managers",response_model=List[dict])
 async def get_jobs_under_manager(current_user=Depends(get_current_user)):
-    return await jobs_crud.jobs_under_manager(current_user)
+    print(current_user["role"])
+    if current_user["role"] == "HM" or current_user["role"] == "WFM":
+        return await jobs_crud.jobs_under_manager(current_user)
+    else:
+        raise HTTPException(status_code=403, detail="Not Authorized")
+    
 
 
 # Endpoint to create a new job
