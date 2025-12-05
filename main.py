@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from routers.jobs import jobs_router
 from routers.file_upload import file_upload_router
 # from routers.application import application_router
-
+from routers.employee import router as employee_router,resume_router,hm_router,wfm_router,tp_router
 import os
 load_dotenv()
 
@@ -54,3 +54,11 @@ async def root(current_user=Depends(get_current_user)):
 # app.include_router(employee.router, prefix="/api/employees", tags=["Employees"])
 # app.include_router(application.router, prefix="/api/applications", tags=["Applications"])
 # app.include_router(man
+
+
+
+app.include_router(employee_router, tags=["Employees"])
+app.include_router(resume_router, tags=["Resume Management"])      
+app.include_router(hm_router,tags=["Managers"])
+app.include_router(wfm_router,tags=["Managers"])
+app.include_router(tp_router,tags=["Managers"])
