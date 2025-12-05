@@ -73,7 +73,7 @@ async def upload_career_velocity(file: UploadFile = File(...),current_user=Depen
 
 @file_upload_router.post("/rr-report")
 async def upload_rr_report(file: UploadFile = File(...),current_user=Depends(get_current_user)):
-    if current_user["role"] != "HM":
+    if current_user["role"] not in  ["HM","Admin"]:
         logger.error(f"Unauthorized attempt of logging for rr_report upload")
         return HTTPException(status_code=409,detail="Not Authorized")
     content = await file.read()

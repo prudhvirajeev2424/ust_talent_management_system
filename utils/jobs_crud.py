@@ -137,7 +137,8 @@ async def get_jobs(location: Optional[str], current_user):
 #     - HM : jobs where hm_id== current_user 
 async def jobs_under_manager(current_user):
     
-    role = current_user["role"]
+    role= current_user["role"]
+    print(role)
     
     # WFM role can access jobs based on WFM ID
     if role == "WFM":
