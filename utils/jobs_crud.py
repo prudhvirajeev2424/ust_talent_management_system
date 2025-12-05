@@ -178,3 +178,201 @@ async def create_resource_request(job_data: ResourceRequest, current_user):
     except Exception as e:
         logger.error(f"Error creating resource request for employee_id={current_user.get('employee_id')}: {str(e)}")
         return {"details":f"Error:{e}"}
+
+
+
+# Function to normalize dates (convert datetime.date to datetime.datetime for MongoDB compatibility)
+def normalize_dates(doc: dict) -> dict:
+    # Convert all datetime.date values to datetime.datetime for MongoDB
+    for key, value in doc.items():
+        if isinstance(value, date) and not isinstance(value, datetime):
+            # Convert date → datetime at midnight UTC
+            doc[key] = datetime(value.year, value.month, value.day) # If value is a date object but not datetime
+    return doc
+
+# Function to update both the ResourceRequest documents in MongoDB
+# - Only HMs can update.
+# - HM can only update jobs they own (hm_id == current_user["employee_id"]). 
+
+async def update_resource_request(request_id: str, update_data: ResourceRequest, current_user):
+   
+    if current_user["role"] != "HM":
+        logger.warning(f"Unauthorized update attempt by role={current_user["role"]}, employee_id={current_user["employee_id"]}")
+        raise PermissionError("You do not have permission to update jobs.")
+ 
+    # Start a session for updates
+    async with await db.client.start_session() as session:
+        async with session.start_transaction():
+            try:
+                # Step 1: Find the resource request owned by this HM
+                resource_request = await db.resource_request.find_one(
+                    {"resource_request_id": request_id, "hm_id": current_user["employee_id"]},
+                    session=session  # Pass the session for atomicity
+                )
+                logger.info(f"Fetching the Existing Job from Resource Request Document with ID: {request_id}")
+                if not resource_request:
+                    logger.warning(f"ResourceRequest not found or unauthorized for request_id={request_id}, hm_id={current_user["employee_id"]}")
+                    raise PermissionError("ResourceRequest not found or you're not authorized to update this job.")
+ 
+                # Step 2: Update ResourceRequest
+                update_resource_request_data = update_data.dict(exclude_unset=True, by_alias=False)
+                update_resource_request_data = normalize_dates(update_resource_request_data)
+ 
+                update_result = await db.resource_request.update_one(
+                    {"resource_request_id": request_id, "hm_id": current_user["employee_id"]},
+                    {"$set": update_resource_request_data},
+                    session=session
+                )
+                if update_result.matched_count == 0:
+                    logger.error(f"No matching ResourceRequest found for update. request_id={request_id}, hm_id={current_user["employee_id"]}")
+                    raise Exception("ResourceRequest not found for the job.")
+
+                logger.info(f"Updating the Resource Request ID: {request_id} by HM ID: {current_user["employee_id"]}")
+                return True
+ 
+            except Exception as e:
+                logger.error(f"Error in update_resource_request for request_id={request_id}, hm_id={current_user.get('employee_id')}: {str(e)}")
+                raise Exception(f"Error occurred: {e}")
+            
+# Function to get skills availability for HM
+# Fetches all resource requests for the HM, extracts all required skills,
+# and returns count of employees skilled in each skill
+
+# Normalize skill strings by removing brackets, quotes, and extra spaces.
+def clean_skill(skill: str) -> str:
+    if not isinstance(skill, str):
+        return str(skill).strip()
+    skill = skill.strip()
+    skill = skill.replace("[", "").replace("]", "")
+    skill = skill.replace("'", "").replace('"', "")
+    return skill.strip()
+ 
+ 
+async def get_skills_availability(
+    current_user,
+    resource_request_id: Optional[str] = None,
+    skill: Optional[str] = None
+):
+    try:
+        hm_id = current_user["employee_id"]
+
+        # Step 1: Fetch all resource requests for this HM
+        resource_requests = await db.resource_request.find({"hm_id": hm_id}).to_list(None)
+        logger.info(f"Fetched the all Resource Requests under HM ID:{hm_id}")
+
+        # Step 2: Extract all unique skills
+        all_skills = set()
+        rr_skills_mapping = []
+
+        for rr in resource_requests:
+            rr_id = rr.get("resource_request_id", "")
+
+            # Apply resource_request_id filter if provided
+            if resource_request_id and rr_id != resource_request_id:
+                logger.debug(f"Skipping resource request {rr_id} (filter applied)")
+                continue
+
+            mandatory_skills = rr.get("mandatory_skills", [])
+            optional_skills = rr.get("optional_skills", [])
+
+            if isinstance(optional_skills, str):
+                optional_skills = [s.strip() for s in optional_skills.split(",") if s.strip()]
+
+            mandatory_skills = [clean_skill(s) for s in mandatory_skills]
+            optional_skills = [clean_skill(s) for s in optional_skills]
+
+            combined_skills = list(set(mandatory_skills + optional_skills))
+            all_skills.update(combined_skills)
+
+            rr_skills_mapping.append({
+                "resource_request_id": rr_id,
+                "project_name": rr.get("project_name", ""),
+                "ust_role": rr.get("ust_role", ""),
+                "mandatory_skills": mandatory_skills,
+                "optional_skills": optional_skills,
+                "combined_skills": combined_skills,
+                "total_skills_required": len(combined_skills)
+            })
+        logger.info(f"Extracted {len(all_skills)} unique skills across resource requests")
+
+        # Step 3: For each skill, find employees
+        skills_summary = []
+        for skill_name in sorted(all_skills):
+            if not skill_name:
+                
+                continue
+
+            if skill and skill_name.lower() != skill.lower():
+                logger.debug(f"Skipping skill {skill_name} (filter applied)")
+                continue
+
+            employees_with_skill = await db.employees.find({
+                "detailed_skills": {"$in": [skill_name]}
+            }).to_list(None)
+
+            skills_summary.append({
+                "skill": skill_name,
+                "employee_count": len(employees_with_skill),
+                "employees": [
+                    {
+                        "employee_id": emp.get("employee_id"),
+                        "employee_name": emp.get("employee_name"),
+                        "designation": emp.get("designation"),
+                        "primary_technology": emp.get("primary_technology"),
+                        "city": emp.get("city")
+                    }
+                    for emp in employees_with_skill
+                ]
+            })
+
+        # Step 4: Conditional return format
+        if resource_request_id and not skill:
+            logger.info("Returning data with resource_request filter only")
+            # Only resource request filter
+            return {
+                "hm_id": hm_id,
+                "resource_requests": rr_skills_mapping,
+                "skills_summary": skills_summary
+            }
+        elif skill and not resource_request_id:
+            logger.info("Returning data with skill filter only")
+
+            # Only skill filter
+            return {
+                "hm_id": hm_id,
+                "skills_summary": skills_summary
+            }
+        elif skill and resource_request_id:
+            logger.info("Returning data with both resource_request and skill filters")
+
+            # Both filters applied
+            return {
+                "hm_id": hm_id,
+                "resource_requests": rr_skills_mapping,
+                "skills_summary": skills_summary
+            }
+        else:
+            # No filters applied → full summary
+            logger.info("Returning full summary (no filters applied)")
+            return {
+                "hm_id": hm_id,
+                "resource_requests_count": len(resource_requests),
+                "total_unique_skills": len(all_skills),
+                "resource_requests": rr_skills_mapping,
+                "skills_summary": sorted(skills_summary, key=lambda x: x["employee_count"], reverse=True),
+                "summary_stats": {
+                    "total_resource_requests": len(resource_requests),
+                    "total_unique_skills_required": len(all_skills),
+                    "average_employees_per_skill": round(
+                        sum(s["employee_count"] for s in skills_summary) / len(skills_summary), 2
+                    ) if skills_summary else 0,
+                    "skills_with_no_employees": len([s for s in skills_summary if s["employee_count"] == 0])
+                }
+            }
+
+    except Exception as e:
+        logger.error(
+            f"Error retrieving skills availability for HM ID={current_user.get('employee_id')}, "
+            f"resource_request_id={resource_request_id}, skill={skill}: {str(e)}"
+        )
+        raise Exception(f"Error retrieving skills availability: {str(e)}")

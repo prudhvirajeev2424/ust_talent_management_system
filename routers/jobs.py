@@ -36,3 +36,41 @@ async def create_new_job(new_job: ResourceRequest, current_user=Depends(get_curr
     except Exception as e:
         # Handle errors during creation
         raise HTTPException(status_code=400, detail=f"Error: {e}")
+
+
+# Endpoint to update an existing job
+# Only HM is allowed to modify
+@jobs_router.put("/modify")
+async def update_job(request_id: str, updated_job: ResourceRequest, current_user=Depends(get_current_user)):
+    # Check if user is HM
+    if current_user["role"] != "HM":
+        raise HTTPException(status_code=403, detail="Not Authorized")
+    try:
+        # Update both job and resource request based on ID
+        await jobs_crud.update_resource_request(request_id, updated_job, current_user)
+        return {"detail": "Job Updated Successfully"}
+    except Exception as e:
+        # Handle errors during update
+        raise HTTPException(status_code=400, detail=f"Error: {e}")
+
+
+# Endpoint to get skills availability for HM
+# Only HM (Hiring Manager) is authorized
+# Returns all required skills from their resource requests and the count of employees skilled in each
+# Optional filters: resource_request_id (filter by specific request) and skill (filter by specific skill)
+@jobs_router.get("/skills/availability")
+async def get_skills_availability(
+    current_user=Depends(get_current_user),
+    resource_request_id: Optional[str] = None,
+    skill: Optional[str] = None
+):
+    # Check if user is HM
+    if current_user["role"] != "HM":
+        raise HTTPException(status_code=403, detail="Not Authorized")
+    try:
+        # Call CRUD function to get skills availability with optional filters
+        skills_data = await jobs_crud.get_skills_availability(current_user, resource_request_id, skill)
+        return skills_data
+    except Exception as e:
+        # Handle errors
+        raise HTTPException(status_code=400, detail=f"Error: {e}")
