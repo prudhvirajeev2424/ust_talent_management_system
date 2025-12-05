@@ -372,3 +372,50 @@ async def allocate(app_id: str, current_user: dict = Depends(get_current_user)):
    
     raise HTTPException(500, "Failed to allocate candidate")
  
+@manager_router.patch("/bulk/applications/{action}")
+async def bulk_manual_action(
+    action: Literal["shortlist", "select", "reject", "allocate"],
+    app_ids: List[str] = Query(...),
+    current_user: dict = Depends(get_current_user)
+):
+    if not app_ids:
+        raise HTTPException(400, "No application IDs provided")
+    if len(app_ids) > 100:
+        raise HTTPException(400, "Maximum 100 applications per bulk operation")
+ 
+    allowed = {
+        "TP Manager": {"shortlist"},
+        "WFM": {"shortlist", "select", "reject"},
+        "HM": {"allocate"},
+        "Admin": {"shortlist", "select", "reject", "allocate"}
+    }
+   
+    if action not in allowed.get(current_user["role"], set()):
+        raise HTTPException(403, f"Role '{current_user['role']}' cannot perform '{action}' action")
+ 
+    results = []
+    for app_id in app_ids:
+        try:
+            if action == "shortlist":
+                resp = await shortlist(app_id, current_user)
+            elif action == "select":
+                resp = await select_candidate(app_id, current_user)
+            elif action == "reject":
+                resp = await reject_candidate(app_id, current_user)
+            elif action == "allocate":
+                resp = await allocate(app_id, current_user)
+           
+            results.append({"app_id": app_id, "status": "success", "message": resp["message"]})
+        except HTTPException as e:
+            results.append({"app_id": app_id, "status": "failed", "error": str(e.detail)})
+        except Exception as e:
+            results.append({"app_id": app_id, "status": "failed", "error": f"Unexpected error: {str(e)}"})
+ 
+    return {
+        "action": action,
+        "total": len(app_ids),
+        "successful": len([r for r in results if r["status"] == "success"]),
+        "failed": len([r for r in results if r["status"] == "failed"]),
+        "results": results
+    }
+ 
