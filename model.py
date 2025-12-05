@@ -10,6 +10,14 @@ import re
 from typing import List, Optional,Literal
 from datetime import date, datetime, timezone
  
+class User(BaseModel):
+    employee_id : str
+    password : str = "$argon2id$v=19$m=65536,t=3,p=4$otQ6h9CaM4ZwzlnL2TtnTA$gbLxVjVlKj/NYp7KF7B287JDOVMMHO3oDGUbjszW32U"
+    role : str
+    is_active : bool = True
+    created_at : datetime = datetime.now(timezone.utc)
+   
+ 
 
 class Employee(BaseModel):
     employee_id: int = Field(..., alias="Employee ID")
