@@ -214,6 +214,7 @@ async def update_resource_request(request_id: str, update_data: ResourceRequest,
                     session=session  # Pass the session for atomicity
                 )
                 logger.info(f"Fetching the Existing Job from Resource Request Document with ID: {request_id}")
+                
                 if not resource_request:
                     logger.warning(f"ResourceRequest not found or unauthorized for request_id={request_id}, hm_id={current_user["employee_id"]}")
                     raise PermissionError("ResourceRequest not found or you're not authorized to update this job.")
@@ -251,7 +252,7 @@ def clean_skill(skill: str) -> str:
     skill = skill.replace("'", "").replace('"', "")
     return skill.strip()
  
- 
+
 async def get_skills_availability(
     current_user,
     resource_request_id: Optional[str] = None,
@@ -381,12 +382,12 @@ async def get_skills_availability(
         )
         raise Exception(f"Error retrieving skills availability: {str(e)}")
     
-   
+
 async def patch_resource_request_single(request_id: str, key: str,value: Any,current_user: Dict) -> bool:
  
     # Step 0: Permission check
     if current_user.get("role") != "HM":
-        logger.warning(f"Unauthorized patch attempt by role={current_user["role"]}, hm_id={current_user["employee_id"]}")
+        logger.warning(f"Unauthorized patch attempt by role={current_user['role']}, hm_id={current_user['employee_id']}")
         raise PermissionError("You do not have permission to patch resource requests.")
  
  
@@ -409,12 +410,12 @@ async def patch_resource_request_single(request_id: str, key: str,value: Any,cur
                             f"No matching ResourceRequest found for patch. request_id={request_id}, hm_id={current_user["employee_id"]}"
                         )
                     raise PermissionError("ResourceRequest not found or not owned by this HM.")
-                logger.info(f"Performed the patch on Resource Request ID : {request_id} under HM ID:{current_user["employee_id"]}")
+                logger.info(f"Performed the patch on Resource Request ID : {request_id} under HM ID:{current_user['employee_id']}")
                 return True
- 
+
             except Exception as e:
                 logger.error(
-                        f"Error while patching ResourceRequest ID={request_id}, hm_id={current_user["employee_id"]}, key={key}: {str(e)}"
+                        f"Error while patching ResourceRequest ID={request_id}, hm_id={current_user['employee_id']}, key={key}: {str(e)}"
                     )
                 raise Exception(f"Error occurred while patching ResourceRequest: {e}")
         
@@ -423,10 +424,10 @@ async def delete_resource_request(
     request_id: str,
     current_user: Dict
 ) -> bool:
- 
+
     # Step 0: Permission check
     if current_user.get("role") != "HM":
-        logger.warning(f"Unauthorized delete attempt by role={current_user["role"]}, hm_id={current_user["employee_id"]}")
+        logger.warning(f"Unauthorized delete attempt by role={current_user['role']}, hm_id={current_user['employee_id']}")
         raise PermissionError("You do not have permission to delete resource requests.")
  
     async with await db.client.start_session() as session:
@@ -437,11 +438,11 @@ async def delete_resource_request(
                     {"$set": {"flag": False}},   # mark as inactive
                     session=session
                 )
- 
+
                 if result.matched_count == 0:
                     raise PermissionError("ResourceRequest not found or not owned by this HM.")
                
-                logger.info(f"Deactivating the Resource Request ID : {request_id} under HM ID:{current_user["employee_id"]}")
+                logger.info(f"Deactivating the Resource Request ID : {request_id} under HM ID:{current_user['employee_id']}")
  
                 return True
  
