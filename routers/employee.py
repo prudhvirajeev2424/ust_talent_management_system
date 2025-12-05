@@ -169,6 +169,321 @@ async def get_employees_from_applications(current_user: Dict[str, Any] = Depends
  
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
+    
+    
+    
+# ====================== SEARCH (FINAL - WITH EMPLOYEE TYPE) ======================
+@router.get("/search")
+async def search_employees(search: str = Query(..., min_length=1),current_user: Dict[str, Any] = Depends(get_current_user)):
+   
+    query = {
+        "$or": [
+            {"employee_name": {"$regex": search, "$options": "i"}},
+            {"designation": {"$regex": search, "$options": "i"}},
+            {"primary_technology": {"$regex": search, "$options": "i"}},
+            {"secondary_technology": {"$regex": search, "$options": "i"}},
+ 
+            # Employee identifiers
+            {"employee_id": {"$regex": search, "$options": "i"}},
+           
+            # Employee Type fields (both exist in your data)
+            {"type": {"$regex": search, "$options": "i"}},           # e.g. "TP", "Non TP"
+            {"employment_type": {"$regex": search, "$options": "i"}}, # e.g. "Employee"
+ 
+            # Location & Grade
+            {"city": {"$regex": search, "$options": "i"}},
+            {"band": {"$regex": search, "$options": "i"}},
+        ]
+    }
+ 
+    # Bonus: If search is a full number → also try exact Employee ID match (faster & accurate)
+    if search.strip().isdigit():
+        query["$or"].append({"employee_id": int(search)})
+ 
+    cursor = employees.find(query)
+    docs = await cursor.to_list(length=None)
+    result = [_serialize(doc) for doc in docs]
+ 
+    return {"count": len(result), "data": result}
+ 
+ # ====================== FILTER ======================
+@router.get("/filter")
+async def filter_employees(
+    employee_type: Optional[str] = Query(None, description="TP, Non TP"),
+    employment_type: Optional[str] = Query(None, description="Employee, Contractor"),
+    city: Optional[str] = Query(None, description="e.g. Bangalore, Chennai"),
+    band: Optional[str] = Query(None, description="e.g. A3, B1"),
+    designation: Optional[str] = Query(None, description="e.g. Tester III"),
+    primary_tech: Optional[str] = Query(None, alias="primary", description="e.g. Java"),
+    secondary_tech: Optional[str] = Query(None, alias="secondary", description="e.g. Angular"),current_user: Dict[str, Any] = Depends(get_current_user)):
+ 
+    query: Dict[str, Any] = {}
+ 
+    if employee_type:
+        query["type"] = {"$regex": f"^{employee_type}$", "$options": "i"}
+    if employment_type:
+        query["employment_type"] = {"$regex": f"^{employment_type}$", "$options": "i"}
+    if city:
+        query["city"] = {"$regex": city, "$options": "i"}
+    if band:
+        query["band"] = {"$regex": band, "$options": "i"}
+    if designation:
+        query["designation"] = {"$regex": designation, "$options": "i"}
+    if primary_tech:
+        query["primary_technology"] = {"$regex": primary_tech, "$options": "i"}
+    if secondary_tech:
+        query["secondary_technology"] = {"$regex": secondary_tech, "$options": "i"}
+   
+    cursor = employees.find(query)
+    docs = await cursor.to_list(length=None)
+    result = [_serialize(doc) for doc in docs]
+ 
+    return {
+        "count": len(result),
+        "data": result,
+        "applied_filters": {
+            "employee_type": employee_type,
+            "employment_type": employment_type,
+            "city": city,
+            "band": band,
+            "designation": designation,
+            "primary_tech": primary_tech,
+            "secondary_tech": secondary_tech,
+        }
+    }
+ 
+# ====================== SORT ======================
+ 
+@router.get("/sort")
+async def sort_employees(
+    sort_by: str = Query(
+        "employee_name",
+        description="Field to sort by (case-insensitive)",
+        regex="^(?i)(Employee Name|Employee ID|Designation|Band|City|Type)$"  # ← Magic here
+    ),
+    order: str = Query(
+        "asc",
+        description="asc or desc",
+        regex="^(?i)(asc|desc)$"  # also accepts ASC, Desc, etc.
+    ),current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Sort by:
+    - Employee Name
+    - Employee ID
+    - Designation
+    - Band
+    - City      ← works with city / City / CITY
+    - Type      ← works with type / TYPE
+    """
+    sort_order = 1 if order.lower() == "asc" else -1
+ 
+    # Normalize the field name to exact DB field
+    field_map = {
+        "employee_name": "employee_name",
+        "employee_id": "employee_id",
+        "designation": "designation",
+        "band": "band",
+        "city": "city",
+        "type": "type",
+    }
+ 
+    normalized = sort_by.strip().lower()
+    db_field = field_map.get(normalized, "employee_name")  # safe fallback
+ 
+    cursor = employees.find().sort(db_field, sort_order)
+    docs = await cursor.to_list(length=None)
+    result = [_serialize(doc) for doc in docs]
+ 
+    return {
+        "count": len(result),
+        "data": result,
+        "sorted_by": db_field,
+        "order": order.lower()
+    }
+ 
+ 
+ 
+# ====================== LIST ALL EMPLOYEES ======================
+@router.get("/employees", response_model=List[Dict[str, Any]])
+async def get_employees(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        employees_list = await fetch_all_employees()
+        return employees_list
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching employees: {str(e)}"
+        )
+ 
+ 
+# ====================== GET SINGLE EMPLOYEE ======================
+@router.get("/{employee_id}", response_model=Dict[str, Any])
+async def get_employee(employee_id: int,current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        emp = await fetch_employee_by_id(employee_id)
+        if not emp:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found"
+            )
+        return emp
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching employee: {str(e)}"
+        )
+       
+ 
+# ====================== RESUME UPLOAD & PARSING ======================    
+ 
+def clean_text(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
+ 
+@resume_router.put("/upload/{employee_id}")
+async def upload_resume(
+    employee_id: int,
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    allowed_types = [
+        "application/pdf",
+        "application/msword",  # .doc
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"  # .docx
+    ]
+   
+    # Validate file type
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only PDF, DOC, and DOCX files are allowed")
+ 
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+ 
+    # Save original file to GridFS
+    try:
+        file_id = save_to_gridfs(file.filename, file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving file to GridFS: {str(e)}")
+ 
+    # Extract text using the new unified function
+    try:
+        raw_text = extract_text_from_bytes(file_bytes, file.filename)
+        extracted_text = clean_text(raw_text) if 'clean_text' in globals() else raw_text.strip()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
+ 
+    # Parse with LLM (optional)
+    parsed_resume = None
+    try:
+        parsed_resume = await parse_resume_with_llm(extracted_text)
+       
+    except Exception as e:
+        print(f"LLM parsing failed (continuing anyway): {e}")
+ 
+    # Update employee record
+    update_body = {
+        "resume": file_id,
+        "resume_text": parsed_resume or extracted_text,
+    }
+ 
+    result = await employees.update_one(
+        {"employee_id": employee_id},  # Make sure your DB uses "employee_id" (lowercase)
+        {"$set": update_body}
+    )
+ 
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+ 
+    return {
+        "message": "Resume uploaded and processed successfully",
+        "filename": file.filename,
+        "file_id": file_id,
+        "raw_text_length": len(extracted_text),
+        "llm_parsed": bool(parsed_resume),
+        "preview": (parsed_resume or extracted_text)[:500]
+    }
+   
+ 
+@router.get("/resume/{employee_id}")
+async def get_employee_resume(employee_id: int,current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        # Fetch employee with only needed fields
+        employee = await employees.find_one(
+            {"employee_id": employee_id},
+            {"resume": 1, "resume_file_id": 1, "employee_name": 1}
+        )
+ 
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+ 
+        file_id = None
+        filename = f"Resume_{employee_id}.pdf"
+ 
+        # Step 1: Try correct field first (new uploads)
+        if employee.get("resume_file_id"):
+            try:
+                oid = ObjectId(employee["resume_file_id"]) if isinstance(employee["resume_file_id"], str) else employee["resume_file_id"]
+                if get_gridfs().get(oid):
+                    file_id = oid
+                    filename = employee.get("resume") or filename
+            except:
+                pass
+ 
+        # Step 2: Fallback — old bug: "resume" field has ObjectId string
+        if not file_id and employee.get("resume"):
+            val = employee["resume"]
+            if isinstance(val, str) and len(val) == 24 and ObjectId.is_valid(val):
+                try:
+                    oid = ObjectId(val)
+                    if get_gridfs().get(oid):
+                        file_id = oid
+                        name = employee.get("employee_name", "Employee").replace(" ", "_")
+                        filename = f"{name}_Resume.pdf"
+                except:
+                    pass
+ 
+        if not file_id:
+            raise HTTPException(status_code=404, detail="No resume uploaded for this employee")
+ 
+        # CRITICAL: Use sync GridFS → NO AWAIT!
+        grid_out = get_gridfs().get(file_id)
+        if not grid_out:
+            raise HTTPException(status_code=404, detail="Resume file not found in storage")
+ 
+        # Read file content — sync, no await!
+        file_data = grid_out.read()
+ 
+        # Get filename safely
+        final_filename = grid_out.filename or filename
+ 
+        # Detect MIME type
+        mime_type, _ = mimetypes.guess_type(final_filename)
+        if not mime_type:
+            # Fallback from GridFS metadata or default
+            mime_type = getattr(grid_out, "content_type", None) or "application/pdf"
+ 
+        return Response(
+            content=file_data,
+            media_type=mime_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{final_filename}"',
+                "Content-Length": str(grid_out.length),
+                "Cache-Control": "no-cache",
+            }
+        )
+ 
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[RESUME ERROR] Employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve resume")
+ 
  
  
  
