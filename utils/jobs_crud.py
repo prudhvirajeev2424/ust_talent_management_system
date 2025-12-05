@@ -128,6 +128,33 @@ async def get_jobs(location: Optional[str], current_user):
         logger.error(f"Error in get_jobs for employee_id={current_user.get('employee_id')}, role={current_user.get('role')}: {str(e)}")
         return {"details":f"Error:{e}"}
 
+# Access to the jobs for managers 
+#     - WFM: jobs where wfm_id == current_user.id
+#     - HM : jobs where hm_id== current_user 
+async def jobs_under_manager(current_user):
+    
+    role = current_user["role"]
+    
+    # WFM role can access jobs based on WFM ID
+    if role == "WFM":
+        query = {"wfm_id": current_user["employee_id"]}
+        cursor = db.resource_request.find(query)
+        docs = await cursor.to_list(length=100)
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        logger.info(f"Accessing jobs under wfm_id: {current_user["employee_id"]}")
+        return docs
+ 
+     # HM role can access jobs based on HM ID
+    elif role == "HM":
+        query = {"hm_id": current_user["employee_id"]}
+        cursor = db.resource_request.find(query)
+        docs = await cursor.to_list(length=100)
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        logger.info(f"Accessing jobs under hm_id: {current_user["employee_id"]}")
+        return docs
+
 
     
 # Function to create a job and associated resource request, and write to a CSV file

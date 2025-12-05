@@ -17,6 +17,10 @@ async def get_all_jobs(location: Optional[str] = None, current_user=Depends(get_
     # Delegates job fetching logic to jobs_crud
     return await jobs_crud.get_jobs(location, current_user)
 
+@jobs_router.get("/managers",response_model=List[dict])
+async def get_jobs_under_manager(current_user=Depends(get_current_user)):
+    return await jobs_crud.jobs_under_manager(current_user)
+
 
 # Endpoint to create a new job
 # Only HM (Hiring Manager) is authorized
