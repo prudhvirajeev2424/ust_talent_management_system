@@ -429,6 +429,13 @@ async def upload_resume(
     if not employee_id:
         raise HTTPException(status_code=401, detail="Invalid user session")
 
+    # Check if the user already has a resume uploaded
+    existing_employee = await employees.find_one({"employee_id": int(employee_id)})
+    if existing_employee and existing_employee.get("resume"):
+        return {
+            "message": "Your resume is already uploaded. You can upload a new one if you'd like."
+        }
+
     allowed_types = [
         "application/pdf",
         "application/msword",
@@ -464,8 +471,8 @@ async def upload_resume(
 
     # Update ONLY the logged-in employee's record
     update_body = {
-        "resume_file_id": str(file_id),   # Recommended: store as string
-        "resume": file.filename,
+        # Recommended: store as string
+        "resume": file_id,
         "resume_text": parsed_resume or extracted_text,
     }
 
@@ -484,4 +491,3 @@ async def upload_resume(
         "raw_text_length": len(extracted_text),
         "llm_parsed": bool(parsed_resume),
     }
-
