@@ -10,6 +10,17 @@ import os
 import logging
  
 
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler("app.log", encoding='utf-8'),  # Log to a file
+                        # logging.StreamHandler()  # Optionally, still log to terminal
+                    ])
+logger = logging.getLogger("RRProcessor")
+
+UPLOAD_FOLDER = "upload_files/unprocessed"
+PROCESSED_FOLDER = "upload_files/processed"
+
 async def log_upload_action(audit_type: str, filename: str, file_type: str,
                            uploaded_by: str, total_rows: int, valid_rows: int,
                            failed_rows: int, sample_errors):
@@ -36,4 +47,49 @@ def convert_dates_for_mongo(data: dict):
             data[k] = datetime.combine(v, time.min).replace(tzinfo=timezone.utc)
     return data
  
+async def sync_rr_with_db(validated_rrs: List[ResourceRequest]):
+    uploaded_ids = {rr.resource_request_id for rr in validated_rrs}
+ 
+    # Fetch current state
+    existing_rrs = await collections["resource_request"].find(
+        {}, {"Resource Request ID": 1, "rr_status": 1}
+    ).to_list(None)
+    rr_map = {r["Resource Request ID"]: r for r in existing_rrs}
+ 
+    rr_insert, rr_reactivate = [], []
+    for rr in validated_rrs:
+        rr_id = rr.resource_request_id
+        rr_data = convert_dates_for_mongo(rr.model_dump(by_alias=False))
+ 
+        if rr_id not in rr_map:
+            rr_insert.append(rr_data)
+        elif not rr_map[rr_id].get("rr_status"):
+            rr_reactivate.append({"filter": {"Resource Request ID": rr_id},
+                                  "update": {"$set": {"rr_status": True}}})
+ 
+   
+    # Deactivate removed RRs
+    deactivate_rr = [{"filter": {"Resource Request ID": rid}, "update": {"$set": {"rr_status": False}}}
+                     for rid in rr_map if rid not in uploaded_ids and rr_map[rid].get("rr_status")]
+    # Bulk operations
+    if rr_insert:   await collections["resource_request"].insert_many(rr_insert, ordered=False)
+    for op in rr_reactivate + deactivate_rr:
+        await collections["resource_request"].update_one(op["filter"], op["update"])
+    return {
+        "rr_inserted": len(rr_insert),
+        "rr_reactivated+deactivated": len(rr_reactivate) + len(deactivate_rr),
+    }
+ 
+async def delete_old_files_in_processed():
+    now = datetime.now()
+    for filename in os.listdir(PROCESSED_FOLDER):
+        file_path = os.path.join(PROCESSED_FOLDER, filename)
+        if os.path.isfile(file_path):
+            file_creation_time = datetime.fromtimestamp(os.path.getctime(file_path))
+            if now - file_creation_time > timedelta(weeks=1):  # Older than 7 days
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Deleted old file: {filename}")
+                except Exception as e:
+                    logger.error(f"Failed to delete {filename}: {e}")
  
