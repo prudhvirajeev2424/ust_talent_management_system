@@ -53,11 +53,13 @@ async def get_jobs(location: Optional[str], current_user):
     
         # Admin has access to all jobs
         if role == "Admin" or role=="TP Manager":
-            cursor = db.resource_request.find({}) 
-            # Fetch the jobs as a list
-            docs = await cursor.to_list(length=100)
+            
+            # Fetch the jobs as a list 
+            query={}
             if location:
                 query["city"] = location
+            cursor = db.resource_request.find(query)
+            docs = await cursor.to_list(length=100)
             for d in docs:
                 d["_id"] = str(d["_id"])
             logger.info(f"Fetched jobs for Role: {role}")
