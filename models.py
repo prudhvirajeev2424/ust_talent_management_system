@@ -1,3 +1,4 @@
+# ----------------------------- IMPORTS -----------------------------
 from pydantic import BaseModel, field_validator, Field, AwareDatetime
 import re
 from typing import List, Optional,Literal
@@ -10,16 +11,23 @@ import re
 from typing import List, Optional,Literal
 from datetime import date, datetime, timezone
  
+# ----------------------------- USER MODEL -----------------------------
 class User(BaseModel):
+    # Employee identifier for authentication
     employee_id : str
+    # Default hashed password assigned
     password : str = "$argon2id$v=19$m=65536,t=3,p=4$otQ6h9CaM4ZwzlnL2TtnTA$gbLxVjVlKj/NYp7KF7B287JDOVMMHO3oDGUbjszW32U"
+    # User role (Admin / HM / etc.)
     role : str
+    # Whether the account is active
     is_active : bool = True
+    # Time of creation stored in UTC
     created_at : datetime = datetime.now(timezone.utc)
    
  
-
+# ----------------------------- EMPLOYEE MODEL -----------------------------
 class Employee(BaseModel):
+    # Mapped fields from Excel columns using alias
     employee_id: int = Field(..., alias="Employee ID")
     employee_name: str = Field(..., alias="Employee Name")
     employment_type: str = Field(..., alias="Employment Type")
@@ -35,7 +43,7 @@ class Employee(BaseModel):
     resume : Optional[str] = None
     resume_text: Optional[str] = Field(None)
  
-    # Normalize TP / Non TP
+    # Normalize TP / Non TP values
     @field_validator("type", mode="before")
     @classmethod
     def normalize_type(cls, v):
@@ -43,7 +51,7 @@ class Employee(BaseModel):
             return "Non TP"
         return "TP" if str(v).strip().upper() == "TP" else "Non TP"
  
-    # Validate and normalize band values
+    # Validate band format
     @field_validator("band", mode="before")
     @classmethod
     def normalize_band(cls, v):
@@ -52,14 +60,14 @@ class Employee(BaseModel):
  
         value = str(v).strip().upper()
  
-        if re.match(r"^[A-D][0-9]$", value):    # A0–D9
+        if re.match(r"^[A-D][0-9]$", value):
             return value
-        if re.match(r"^[TEP][0-9]$", value):    # T/E/P grades
+        if re.match(r"^[TEP][0-9]$", value):
             return value
  
         raise ValueError(f"Invalid band format: '{value}'")
  
-    # Handle NA/Not Available
+    # Normalize NA-like text for tech fields
     @field_validator("primary_technology", "secondary_technology", mode="before")
     @classmethod
     def handle_not_available(cls, v, info):
@@ -67,7 +75,7 @@ class Employee(BaseModel):
             return "" if info.field_name == "primary_technology" else None
         return str(v).strip()
  
-    # Split comma-separated or question-mark-separated skills
+    # Convert comma-separated skills into list
     @field_validator("detailed_skills", mode="before")
     @classmethod
     def split_detailed_skills(cls, v):
@@ -80,7 +88,9 @@ class Employee(BaseModel):
         populate_by_name = False
         extra = "ignore"
  
+# ----------------------------- RESOURCE REQUEST MODEL -----------------------------
 class ResourceRequest(BaseModel):
+    # All fields mapped using aliases from RR Excel
     resource_request_id: str = Field(..., alias="Resource Request ID")
     rr_fte: float = Field(..., alias="RR FTE")
     allocated_fte: Optional[float] = Field(None, alias="Allocated FTE")
@@ -176,7 +186,7 @@ class ResourceRequest(BaseModel):
     legal_entity: str = Field(..., alias="Legal Entity")
     company_name: str = Field(..., alias="Company Name")
  
-    # Your existing validators remain 100% unchanged
+    # Convert numeric-like CSV strings to numbers
     @field_validator("allocated_fte","duration_before_cancellation","resources_in_propose",
 "resources_in_hm_check",
 "resources_in_internal_interview",
@@ -189,16 +199,17 @@ class ResourceRequest(BaseModel):
     def csv_str_to_int(cls,v):
         if str(v).strip() == "" or v==None:
             return
-         
         v = float(str(v).strip())
         return v
    
+    # Normalize priority to P1–P4
     @field_validator("priority", mode="after")
     @classmethod
     def normalize_priority(cls, v):
         v = str(v).strip().upper()
         return v if v in ("P1", "P2", "P3", "P4") else "P4"
  
+    # Convert yes-like values to bool
     @field_validator("exclusive_to_ust", "contract_to_hire", mode="before")
     @classmethod
     def str_to_bool(cls, v):
@@ -206,6 +217,7 @@ class ResourceRequest(BaseModel):
             return v
         return str(v).strip().upper() in ("TRUE", "YES", "Y", "1")
  
+    # Convert CSV skill strings into clean lists
     @field_validator("mandatory_skills", "optional_skills","rr_skill_group", mode="before")
     @classmethod
     def split_skills_from_string(cls, v):
@@ -213,6 +225,7 @@ class ResourceRequest(BaseModel):
             return []
         return [item.strip() for item in str(v).split(",") if item.strip()]
  
+    # Parse multiple date fields from mixed formats
     @field_validator(
         "rr_start_date", "rr_end_date", "project_start_date", "project_end_date",
         "raised_on", "last_updated_on", "rr_finance_approved_date", "wfm_approved_date",
@@ -240,6 +253,7 @@ class ResourceRequest(BaseModel):
  
         raise ValueError(f"Invalid date format '{v}'")
  
+    # Parse last activity datetime across different formats
     @field_validator("last_activity_date", mode="before")
     @classmethod
     def parse_last_activity_date(cls, v):
@@ -271,7 +285,9 @@ class ResourceRequest(BaseModel):
         populate_by_name = True
         extra = "ignore"
 
+# ----------------------------- APPLICATION STATUS ENUM -----------------------------
 class ApplicationStatus(str, Enum):
+    # Possible application lifecycle stages
     DRAFT = "Draft"
     SUBMITTED = "Submitted"
     SHORTLISTED = "Shortlisted"
@@ -281,13 +297,21 @@ class ApplicationStatus(str, Enum):
     ALLOCATED = "Allocated"
     WITHDRAWN = "Withdrawn"
 
+# ----------------------------- APPLICATION MODEL -----------------------------
 class Application(BaseModel):
+    # MongoDB-like UUID identifier
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), alias="_id")
+    # Employee applying
     employee_id: int
+    # RR they applied for
     job_rr_id: str
+    # Current application state
     status: ApplicationStatus = ApplicationStatus.DRAFT
+    # Optional resume link/path
     resume: Optional[str] = None
+    # Optional cover letter
     cover_letter: Optional[str] = None
+    # When submitted (None if draft)
     submitted_at: Optional[datetime] = None
+    # Timestamp auto-updated
     updated_at: datetime = Field(default_factory=datetime.utcnow)
- 
