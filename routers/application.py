@@ -124,3 +124,91 @@ async def create_application(
 
     return Application(**created_app)
 
+
+
+# ---------------------------------------------------------------------
+# UPDATE DRAFT APPLICATION
+# Only DRAFT status can be modified
+# ---------------------------------------------------------------------
+@application_router.put("/{app_id}")
+async def update_draft(
+    app_id: str,
+    job_rr_id: str = Form(...),
+    resume_file: UploadFile | None = File(None),
+    cover_letter_file: UploadFile | None = File(None),
+    current_user: dict = Depends(get_current_user),
+):
+    employee_id = str(current_user["employee_id"])
+ 
+    app = await collections["applications"].find_one({"_id": app_id, "employee_id": employee_id})
+    if not app:
+        raise HTTPException(404, "Application not found")
+    if app.get("status") != ApplicationStatus.DRAFT.value:
+        raise HTTPException(400, "Only draft applications can be edited")
+ 
+    #Validate that job_rr_id exists and job is open
+    job_rr_id = job_rr_id.strip()
+    job = await collections["resource_request"].find_one(
+        {"resource_request_id": job_rr_id, "flag": True}
+    )
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job with RR ID '{job_rr_id}' not found or is no longer open",
+        )
+ 
+    # Only allow job_rr_id and file updates, not status
+    update_fields = {"job_rr_id": job_rr_id}
+ 
+    # Replace resume if new file uploaded
+    if resume_file:
+        ext = resume_file.filename.split(".")[-1].lower()
+        if ext not in {"pdf", "doc", "docx"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid resume file type. Only .pdf, .doc, .docx are allowed.",
+            )
+        resume_bytes = await resume_file.read()
+        resume_file_id = await fs_bucket.upload_from_stream(
+            resume_file.filename,
+            resume_bytes,
+            metadata={"content_type": resume_file.content_type},
+        )
+        update_fields["resume"] = str(resume_file_id)
+        if app.get("resume"):
+            try:
+                await fs_bucket.delete(ObjectId(app["resume"]))
+            except Exception:
+                pass
+ 
+    # Replace cover letter if new file uploaded
+    if cover_letter_file:
+        ext = cover_letter_file.filename.split(".")[-1].lower()
+        if ext not in {"pdf", "doc", "docx"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid cover letter file type. Only .pdf, .doc, .docx are allowed.",
+            )
+        cl_bytes = await cover_letter_file.read()
+        cover_letter_file_id = await fs_bucket.upload_from_stream(
+            cover_letter_file.filename,
+            cl_bytes,
+            metadata={"content_type": cover_letter_file.content_type},
+        )
+        update_fields["cover_letter"] = str(cover_letter_file_id)
+        if app.get("cover_letter"):
+            try:
+                await fs_bucket.delete(ObjectId(app["cover_letter"]))
+            except Exception:
+                pass
+ 
+    update_fields["updated_at"] = datetime.now(timezone.utc)
+ 
+    await collections["applications"].update_one(
+        {"_id": app_id, "employee_id": employee_id},
+        {"$set": update_fields},
+    )
+ 
+    return {"message": "Updated"}
+ 
+ 
