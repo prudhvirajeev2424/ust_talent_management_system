@@ -27,7 +27,7 @@ PROCESSED_FOLDER = "upload_files/processed"
 # --------------------------- AUDIT LOGGING ---------------------------
 async def log_upload_action(audit_type: str, filename: str, file_type: str,
                            uploaded_by: str, total_rows: int, valid_rows: int,
-                           failed_rows: int, sample_errors):
+                           failed_rows: int, errors):
     # Insert audit details into database
     await collections["audit_logs"].insert_one({
         "audit_type": audit_type,
@@ -38,7 +38,7 @@ async def log_upload_action(audit_type: str, filename: str, file_type: str,
         "total_rows": total_rows,
         "valid_rows": valid_rows,
         "failed_rows": failed_rows,
-        "sample_errors": sample_errors,
+        "errors": errors,
     })
  
  

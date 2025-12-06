@@ -196,12 +196,18 @@ class ResourceRequest(BaseModel):
 "resources_in_not_allocated",
 "resources_in_reject","rr_ageing",mode="before")
     @classmethod
-    def csv_str_to_int(cls,v):
+    def csv_str_to_float(cls,v):
         if str(v).strip() == "" or v==None:
             return
         v = float(str(v).strip())
         return v
-   
+    @field_validator("duration_in_edit_days","number_of_edits",mode="before")
+    @classmethod
+    def csv_str_to_int(cls,v):
+        if str(v).strip() == "" or v==None:
+            return
+        v = int(str(v).strip())
+        return v
     # Normalize priority to P1–P4
     @field_validator("priority", mode="after")
     @classmethod
@@ -223,6 +229,8 @@ class ResourceRequest(BaseModel):
     def split_skills_from_string(cls, v):
         if not v or str(v).strip().upper() in ("", "NA", "N/A"):
             return []
+        if str(v).startswith("[") and str(v).endswith("]"):
+            v = str(v)[1:-1]
         return [item.strip() for item in str(v).split(",") if item.strip()]
  
     # Parse multiple date fields from mixed formats
