@@ -138,11 +138,14 @@ async def get_manager_applications(current_user: dict, page: int = 1, limit: int
         if not job_rr_ids:
             return {"applications": [], "total": 0, "page": page, "limit": limit}
 
+        tp_emp_ids = [str(e["employee_id"]) async for e in collections["employees"].find({"type": "TP"}, {"employee_id": 1})]
         non_tp_emp_ids = [str(e["employee_id"]) async for e in collections["employees"].find({"type": "Non TP"}, {"employee_id": 1})]
+        
         query = {
+            "job_rr_id": {"$in": job_rr_ids},
             "$or": [
-                {"job_rr_id": {"$in": job_rr_ids}, "status": {"$nin": ["Draft", "Allocated","Rejected", "Selected","Withdrawn"]}},
-                {"job_rr_id": {"$in": job_rr_ids}, "employee_id": {"$in": non_tp_emp_ids}, "status": "Submitted"}
+                {"employee_id": {"$in": non_tp_emp_ids}, "status": {"$nin": ["Draft", "Withdrawn","Rejected","Selected","Allocated"]}},
+                {"employee_id": {"$in": tp_emp_ids}, "status": {"$nin": ["Draft", "Submitted", "Withdrawn","Rejected","Selected","Allocated"]}}
             ]
         }
 
@@ -244,6 +247,17 @@ async def to_interview(
     if app["status"] not in ["Shortlisted", "Interview"]:
         raise HTTPException(400, f"Cannot schedule interview: current status is '{app['status']}'. Must be 'Shortlisted' first.")
  
+    interview_history = app.get("interview_history", [])
+    
+    current_interview_type = app.get("interview_type")
+    if current_interview_type and current_interview_type != interview_type:
+        interview_history.append({
+            "type": current_interview_type,
+            "scheduled_by": app.get("interview_scheduled_by"),
+            "scheduled_at": app.get("interview_scheduled_at"),
+            "completed_at": datetime.utcnow()
+        })
+    
     result = await collections["applications"].update_one(
         {"_id": app_id},
         {"$set": {
@@ -251,6 +265,7 @@ async def to_interview(
             "interview_type": interview_type,
             "interview_scheduled_by": current_user["employee_id"],
             "interview_scheduled_at": datetime.utcnow(),
+            "interview_history": interview_history,
             "updated_at": datetime.utcnow()
         }}
     )
@@ -259,7 +274,11 @@ async def to_interview(
         await log_audit("move_to_interview", app_id, current_user["employee_id"],
                        {"interview_type": interview_type, "previous_status": app["status"]})
         await update_job_stats_and_employee_type(app_id)
-        return {"message": f"Moved to {interview_type.title()} Interview", "previous_status": app["status"]}
+        return {
+            "message": f"Moved to {interview_type.title()} Interview", 
+            "previous_status": app["status"],
+            "interview_history_count": len(interview_history)
+        }
  
     raise HTTPException(500, "Failed to update application")
 
@@ -271,12 +290,45 @@ async def select_candidate(app_id: str, current_user: dict = Depends(get_current
     app = await collections["applications"].find_one({"_id": app_id})
     if not app:
         raise HTTPException(404, "Application not found")
+    
     if app["status"] != "Interview":
         raise HTTPException(400, f"Cannot select: application is in '{app['status']}' status. Must be 'Interview'.")
    
     if not await verify_job_ownership(app["job_rr_id"], current_user["employee_id"], "WFM"):
         raise HTTPException(403, "You don't manage this job")
    
+    job = await collections["resource_request"].find_one({
+        "resource_request_id": app["job_rr_id"]
+    })
+    
+    if not job:
+        raise HTTPException(404, "Associated job not found")
+    
+    client_interview_required = job.get("client_interview_required", "No")
+    
+    if client_interview_required == "Yes":
+        current_interview_type = app.get("interview_type")
+        interview_history = app.get("interview_history", [])
+        
+        has_customer_interview = (
+            current_interview_type == "customer" or 
+            any(i.get("type") == "customer" for i in interview_history)
+        )
+        
+        if not has_customer_interview:
+            raise HTTPException(
+                400, 
+                "Cannot select: Client interview is mandatory for this position but has not been completed. "
+                f"Current interview type: '{current_interview_type}'. "
+                "Please schedule and complete a 'customer' interview before selecting this candidate."
+            )
+        
+        await log_audit("client_interview_verified", app_id, current_user["employee_id"], {
+            "client_interview_required": "Yes",
+            "current_interview_type": current_interview_type,
+            "interview_history": interview_history,
+            "customer_interview_found": has_customer_interview
+        })
    
     result = await collections["applications"].update_one(
         {"_id": app_id},
@@ -289,9 +341,16 @@ async def select_candidate(app_id: str, current_user: dict = Depends(get_current
     )
    
     if result.modified_count:
-        await log_audit("select_candidate", app_id, current_user["employee_id"])
+        await log_audit("select_candidate", app_id, current_user["employee_id"], {
+            "client_interview_required": client_interview_required,
+            "interview_type_at_selection": app.get("interview_type"),
+            "interviews_completed": len(app.get("interview_history", [])) + 1
+        })
         await update_job_stats_and_employee_type(app_id)
-        return {"message": "Candidate Selected"}
+        return {
+            "message": "Candidate Selected",
+            "client_interview_completed": client_interview_required == "Yes"
+        }
    
     raise HTTPException(500, "Failed to select candidate")
 
