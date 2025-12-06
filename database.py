@@ -27,7 +27,8 @@ collections = {
     "resource_request":db.resource_request,
     "login_attempts":db["login_attempts"],
     "admin_logs":db["admin_logs"],
-    "files":db.files.files
+    "files":db.files.files,
+    "reset_collection":db.reset_tokens
     
 }
 
