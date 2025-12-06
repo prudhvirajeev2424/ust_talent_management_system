@@ -148,8 +148,8 @@ The Talent Management System is designed to streamline employee-job workflows ac
 ### 6. Authentication Service
 - Login with username/password or employee_id/password.
 - Tokens:
-  - Access Token (JWT): short-lived (~5 min).
-  - Refresh Token (JWT): long-lived (~1 day).
+  - Access Token (JWT): short-lived (-5 min).
+  - Refresh Token (JWT): long-lived (-1 day).
 - Refresh flow: exchange refresh token for new access token.
 - Role-based authorization.
 - Logout/revoke refresh tokens.
@@ -167,11 +167,11 @@ The Talent Management System is designed to streamline employee-job workflows ac
 ---
 
 ## Typical End-to-End Flow
-1. Admin uploads Employee & RR reports → data stored, jobs synced.  
-2. Hiring Manager creates/edits jobs → jobs visible to employees.  
-3. Employee applies (Draft → Submitted).  
-4. TP Manager/WFM process applications → shortlist → interview → select/reject.  
-5. Hiring Manager allocates selected candidates → job fulfilled/closed.  
+1. Admin uploads Employee & RR reports -> data stored, jobs synced.  
+2. Hiring Manager creates/edits jobs -> jobs visible to employees.  
+3. Employee applies (Draft -> Submitted).  
+4. TP Manager/WFM process applications -> shortlist -> interview -> select/reject.  
+5. Hiring Manager allocates selected candidates -> job fulfilled/closed.  
 6. All users see role-based views with search/filter/sort.  
 
 ---
