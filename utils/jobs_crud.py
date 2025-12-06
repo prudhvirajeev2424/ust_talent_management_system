@@ -109,7 +109,7 @@ async def get_jobs(location: Optional[str], current_user):
         # WFM role can access jobs based on WFM ID
         elif role == "WFM":
             query = {"wfm_id": {"$ne":current_user['employee_id']}}
-            
+            query["flag"] = True
             if location:
                 query["city"] = location
                 
@@ -127,7 +127,7 @@ async def get_jobs(location: Optional[str], current_user):
         # HM role can access jobs based on HM ID
         elif role == "HM":
             query = {"hm_id": {"$ne":current_user["employee_id"]}}
-            
+            query["flag"] = True
             if location:
                 query["city"] = location
                 
@@ -157,7 +157,6 @@ async def jobs_under_manager(current_user):
     if role == "WFM":
         
         query = {"wfm_id": current_user["employee_id"]}
-        
         cursor = db.resource_request.find(query)
         
         docs = await cursor.to_list(length=100)
