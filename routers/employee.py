@@ -13,7 +13,8 @@ import base64
 from bson import ObjectId
 from fastapi import Response, HTTPException
 import mimetypes
- 
+from utils.file_upload_utils import logger
+
 from utils.employee_service import extract_text_from_bytes, save_to_gridfs
 from utils.employee_service import (
     fetch_all_employees,
@@ -58,120 +59,124 @@ def role_guard(required_role: str):
 async def get_hm_employees(
     hm_id: str,
     current_user: Dict[str, Any] = Depends(role_guard("HM"))
-   
 ):
-    
+    logger.info(f"Fetching HM employees for HM ID: {hm_id}")
     try:
-        # Get the job record using `hm_id`
         job_rr = await resouce_request_col.find_one({"hm_id": hm_id})
         if not job_rr:
+            logger.warning(f"No job records found for HM ID: {hm_id}.")
             return {"message": f"No job records found for HM ID: {hm_id}."}
- 
+
         job_rr_id = str(job_rr.get("resource_request_id"))
- 
-        # Get all applications for this job RR ID with status 'Allocated'
+
         allocated_apps = await app_col.find({"job_rr_id": job_rr_id, "status": "Allocated"}).to_list(length=100)
- 
+
         if not allocated_apps:
+            logger.warning(f"No applications found for job RR ID: {job_rr_id} with 'Allocated' status.")
             return {"message": "No applications found for this job in 'Allocated' status."}
- 
-        # Remove duplicates by converting the list of employee IDs to a set (for unique employee IDs)
+
         unique_employee_ids = set(int(app["employee_id"]) for app in allocated_apps)
- 
-        # Fetch employee data using the unique employee IDs
+
         employees_data = await emp_col.find({"employee_id": {"$in": list(unique_employee_ids)}}).to_list(length=100)
- 
+
         if not employees_data:
+            logger.warning(f"No employee data found for the allocated employees.")
             return {"message": "No employee data found for the allocated employees."}
- 
-        # Remove MongoDB internal `_id` field
+
         for emp in employees_data:
             emp["id"] = str(emp.get("_id"))
             emp.pop("_id", None)
- 
+
+        logger.info(f"Successfully fetched {len(employees_data)} employees for HM ID: {hm_id}.")
         return employees_data
- 
+
     except Exception as e:
+        logger.error(f"Error fetching HM employees for HM ID {hm_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
- 
+
 # ---------------- WFM Endpoint (only WFM role allowed) ----------------
 @wfm_router.get("/{wfm_id}")
 async def wfm_view(
     wfm_id: str,
     current_user: Dict[str, Any] = Depends(role_guard("WFM"))
 ):
+    logger.info(f"Fetching WFM jobs for WFM ID: {wfm_id}")
     try:
-        # Get the jobs for the given `wfm_id`
         wfm_jobs = await resouce_request_col.find({"wfm_id": wfm_id}).to_list(length=100)
         if not wfm_jobs:
+            logger.warning(f"No jobs found for WFM ID: {wfm_id}.")
             return {"message": f"No jobs found for WFM ID: {wfm_id}."}
- 
+
         job_rr_ids = [str(job["resource_request_id"]) for job in wfm_jobs if job.get("resource_request_id")]
-       
+
         if not job_rr_ids:
+            logger.warning(f"No valid resource request IDs found for WFM ID: {wfm_id}.")
             return {"message": "No valid resource request IDs found for this WFM ID."}
- 
-        # Get applications for the job RR IDs
+
         apps = await app_col.find({"job_rr_id": {"$in": job_rr_ids}}, {"employee_id": 1}).to_list(length=100)
         if not apps:
+            logger.warning(f"No applications found for the given WFM jobs.")
             return {"message": "No applications found for these jobs."}
- 
-        # Extract unique employee IDs (convert to int and dedupe)
+
         emp_ids = {int(app["employee_id"]) for app in apps if app.get("employee_id")}
- 
+
         if not emp_ids:
+            logger.warning(f"No valid employee IDs found in the applications.")
             return {"message": "No valid employee IDs found in the applications."}
- 
-        # Fetch employee data for the found employee IDs
+
         result = await emp_col.find({"employee_id": {"$in": list(emp_ids)}}).to_list(length=100)
- 
+
         if not result:
+            logger.warning(f"No employee data found for the applications.")
             return {"message": "No employee data found for the applications."}
- 
-        # Remove MongoDB internal `_id` field
+
         for r in result:
             r["id"] = str(r.get("_id"))
             r.pop("_id", None)
- 
+
+        logger.info(f"Successfully fetched {len(result)} employees for WFM ID: {wfm_id}.")
         return result
- 
+
     except Exception as e:
+        logger.error(f"Error fetching WFM employees for WFM ID {wfm_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
- 
+
 # ---------------- TP Endpoint (only TP Manager role allowed) ----------------
 @tp_router.get("/application_employees")
 async def get_employees_from_applications(current_user: Dict[str, Any] = Depends(role_guard("TP Manager"))):
+    logger.info("Fetching TP employees from applications.")
     try:
-        # Get all applications and their employee IDs
         apps = await app_col.find({}, {"employee_id": 1}).to_list(length=100)
         if not apps:
+            logger.warning("No applications found.")
             return {"message": "No applications found."}
- 
-        # Extract unique employee IDs (convert to int and dedupe)
+
         employee_ids = {int(app["employee_id"]) for app in apps if app.get("employee_id")}
- 
+
         if not employee_ids:
+            logger.warning("No valid employee IDs found in the applications.")
             return {"message": "No valid employee IDs found in the applications."}
- 
-        # Fetch employees with the extracted IDs and filter by "Type" set to "TP"
+
         employees_data = await emp_col.find({
             "employee_id": {"$in": list(employee_ids)},
             "type": "TP"
         }).to_list(length=100)
- 
+
         if not employees_data:
+            logger.warning("No TP employees found for the given applications.")
             return {"message": "No TP employees found for the given applications."}
-        # Remove MongoDB internal `_id` field
+
         for emp in employees_data:
             emp["id"] = str(emp.get("_id"))
             emp.pop("_id", None)
- 
+
+        logger.info(f"Successfully fetched {len(employees_data)} TP employees.")
         return employees_data
- 
+
     except Exception as e:
+        logger.error(f"Error fetching TP employees from applications: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
-    
-    
+
     
 # ====================== SEARCH (FINAL - WITH EMPLOYEE TYPE) ======================
 @router.get("/search")
@@ -417,21 +422,21 @@ async def get_my_resume(
 def clean_text(text: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     return "\n".join(lines)
- 
- 
- # ====================== RESUME UPLOAD - ONLY OWN RESUME ======================
+
 @resume_router.put("/upload")  # ← Removed {employee_id} from path
 async def upload_resume(
     file: UploadFile = File(...),
     current_user: Dict[str, Any] = Depends(get_current_user)  # This gives us the logged-in user
 ):
+    logger.info(f"Uploading resume for employee ID: {current_user.get('employee_id')}")
     employee_id = current_user.get("employee_id")  # Extract from token
     if not employee_id:
+        logger.error("Invalid user session.")
         raise HTTPException(status_code=401, detail="Invalid user session")
 
-    # Check if the user already has a resume uploaded
     existing_employee = await employees.find_one({"employee_id": int(employee_id)})
     if existing_employee and existing_employee.get("resume"):
+        logger.info("Resume already uploaded for this user.")
         return {
             "message": "Your resume is already uploaded. You can upload a new one if you'd like."
         }
@@ -443,35 +448,37 @@ async def upload_resume(
     ]
 
     if file.content_type not in allowed_types:
+        logger.error(f"Invalid file type uploaded: {file.content_type}")
         raise HTTPException(status_code=400, detail="Only PDF, DOC, and DOCX files are allowed")
 
     file_bytes = await file.read()
     if not file_bytes:
+        logger.error("Uploaded file is empty.")
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    # Save to GridFS
     try:
         file_id = save_to_gridfs(file.filename, file_bytes)
+        logger.info(f"File saved to GridFS with file_id: {file_id}")
     except Exception as e:
+        logger.error(f"Error saving file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    # Extract text
     try:
         raw_text = extract_text_from_bytes(file_bytes, file.filename)
         extracted_text = clean_text(raw_text) if 'clean_text' in globals() else raw_text.strip()
+        logger.debug(f"Extracted text from resume: {extracted_text[:200]}...")  # log a snippet of the text
     except Exception as e:
+        logger.error(f"Text extraction failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
 
-    # Optional LLM parsing
     parsed_resume = None
     try:
         parsed_resume = await parse_resume_with_llm(extracted_text)
+        logger.info("LLM parsing successful.")
     except Exception as e:
-        print(f"LLM parsing failed (continuing): {e}")
+        logger.warning(f"LLM parsing failed (continuing): {e}")
 
-    # Update ONLY the logged-in employee's record
     update_body = {
-        # Recommended: store as string
         "resume": file_id,
         "resume_text": parsed_resume or extracted_text,
     }
@@ -482,8 +489,10 @@ async def upload_resume(
     )
 
     if result.matched_count == 0:
+        logger.error(f"Profile not found for employee ID: {employee_id}")
         raise HTTPException(status_code=404, detail="Your profile not found")
 
+    logger.info(f"Resume uploaded successfully for employee ID: {employee_id}")
     return {
         "message": "Your resume has been uploaded and processed successfully!",
         "filename": file.filename,
