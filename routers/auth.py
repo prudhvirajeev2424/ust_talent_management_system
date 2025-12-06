@@ -94,7 +94,7 @@ async def refresh_token(refresh_token: str):
     try:
         # Decode the refresh token to extract payload and verify its validity
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        emp_id = payload.get("sub")  # Extract employee_id from payload
+        emp_id = payload.get("sub")  
         token_type = payload.get("type")  # Extract token type (should be "refresh")
 
         # If the token is not a refresh token, raise an error
@@ -124,8 +124,10 @@ async def refresh_token(refresh_token: str):
 
     # Delete the old refresh token to keep the latest valid one
     last_token = await collections["refresh_tokens"].find_one(
+        #basically we are updating the refress token in descending order
         {"employee_id": emp_id}, sort=[("created_at", -1)]
     )
+    #deleteing the latest token
     if last_token:
         await collections["refresh_tokens"].delete_one({"_id": last_token["_id"]})
 
@@ -137,7 +139,7 @@ async def refresh_token(refresh_token: str):
         "expires_at": datetime.now(timezone.utc) + timedelta(days=7)
     })
 
-    # Return the new access token and refresh token information
+    # Return the new access token information
     return {
         "access_token": new_access_token,
         "token_type": "bearer",  # JWT bearer token type
