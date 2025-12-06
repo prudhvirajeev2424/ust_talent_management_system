@@ -134,13 +134,13 @@ async def create_application(
 async def update_draft(
     app_id: str,
     job_rr_id: str = Form(...),
-    resume_file: UploadFile | None = File(None),
-    cover_letter_file: UploadFile | None = File(None),
+    resume_file: UploadFile = File(...),
+    cover_letter_file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
     employee_id = str(current_user["employee_id"])
  
-    app = await collections["applications"].find_one({"_id": app_id, "employee_id": employee_id})
+    app = await collections["applications"].find_one({"_id": app_id, "employee_id" : employee_id})
     if not app:
         raise HTTPException(404, "Application not found")
     if app.get("status") != ApplicationStatus.DRAFT.value:
@@ -160,7 +160,7 @@ async def update_draft(
     # Only allow job_rr_id and file updates, not status
     update_fields = {"job_rr_id": job_rr_id}
  
-    # Replace resume if new file uploaded
+    # Replace resume with new file uploaded
     if resume_file:
         ext = resume_file.filename.split(".")[-1].lower()
         if ext not in {"pdf", "doc", "docx"}:
@@ -181,7 +181,7 @@ async def update_draft(
             except Exception:
                 pass
  
-    # Replace cover letter if new file uploaded
+    # Replace cover letter with new file uploaded
     if cover_letter_file:
         ext = cover_letter_file.filename.split(".")[-1].lower()
         if ext not in {"pdf", "doc", "docx"}:
