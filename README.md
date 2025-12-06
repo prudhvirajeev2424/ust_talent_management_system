@@ -182,3 +182,49 @@ The Talent Management System is designed to streamline employee-job workflows ac
 - Data storage: Relational DB (Employees, Jobs, RR Audit).
 - File handling: Excel/CSV for reports, DOC/PDF for resumes.
 - Audit & logging across all services.
+
+## **Setup and Installation**
+
+### 1. Clone the Repository
+
+Start by cloning the repository to your local machine:
+
+```bash
+git clone https://github.com/prudhvirajeev2424/ust_talent_management_system.git
+cd ust_talent_management_system
+```
+
+### 2. Install Dependencies.
+
+Install all required dependencies in your environment.
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure MongoDB Connection
+
+#### MongoDB Connection:
+- Set up a MongoDB Atlas account (if you haven't already) and create a cluster.
+- In the project root, create a `.env` file and add the MongoDB URI:
+  
+  ```env
+  DB_URI=mongodb+srv://303391_db_user:5IhrghdRaiXTR22b@cluster0.i0ih74y.mongodb.net/?appName=Cluster0
+  ```
+
+### 4. Start the Server Using Uvicorn
+
+Once the setup is complete, you can start the FastAPI application using Uvicorn.
+
+Run the following command to start the server in development mode (with auto-reload enabled):
+
+```bash
+uvicorn main:app --reload
+```
+
+### 5. Verify the Application
+
+Once the server is running, navigate to `http://127.0.0.1:8000` in your browser to confirm that the application is running.
+
+- **Swagger Docs**: FastAPI provides auto-generated documentation. Go to `http://127.0.0.1:8000/docs` to view the interactive API docs.
+- **Redoc Docs**: You can also access the API documentation in Redoc format at `http://127.0.0.1:8000/redoc`.
