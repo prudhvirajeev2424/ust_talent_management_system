@@ -77,7 +77,7 @@ async def upload_career_velocity(file: UploadFile = File(...),current_user=Depen
     # Log upload attempt in audit log
     await log_upload_action("employees", file.filename,
                             "CSV" if file.filename.endswith(".csv") else "Excel",
-                            current_user["employee_id"], len(df), len(valid_emps), len(errors), errors[:5])
+                            current_user["employee_id"], len(df), len(valid_emps), len(errors), errors)
  
     # If no valid employee rows, return early with error sample
     if not valid_emps:
@@ -153,7 +153,7 @@ async def upload_rr_report(file: UploadFile = File(...),current_user=Depends(get
     # Audit log entry for RR upload
     await log_upload_action("rr_report", file.filename,
                             "CSV" if file.filename.endswith(".csv") else "Excel",
-                            current_user["employee_id"], len(df), len(valid_rrs), len(errors), errors[:5])
+                            current_user["employee_id"], len(df), len(valid_rrs), len(errors), errors)
  
     # If no valid RRs, return early with errors
     if not valid_rrs:
