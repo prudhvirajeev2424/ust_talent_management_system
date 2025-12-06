@@ -202,9 +202,9 @@ async def process_updated_rr_report():
 # ----------------------------- APSCHEDULER SETUP -----------------------------
 # Create AsyncIO-based scheduler instance
 scheduler = AsyncIOScheduler()
-# Job 1: periodically process unprocessed RR files every 24 hours
-scheduler.add_job(process_updated_rr_report, IntervalTrigger(hours=24), id="process_updated_files")
-# Job 2: periodically clean old processed files every 1 day
+# Job 1: periodically process unprocessed RR files everyday
+scheduler.add_job(process_updated_rr_report, IntervalTrigger(days=1), id="process_updated_files")
+# Job 2: periodically clean old processed files everyday
 scheduler.add_job(delete_old_files_in_processed,  IntervalTrigger(days=1) , id="delete_old_files")
 # Start the scheduler to enable background jobs
 scheduler.start()
