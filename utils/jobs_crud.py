@@ -400,7 +400,42 @@ async def get_skills_availability(current_user,resource_request_id: Optional[str
             f"resource_request_id={resource_request_id}, skill={skill}: {str(e)}"
         )
         raise Exception(f"Error retrieving skills availability: {str(e)}")
-        
+
+async def patch_resource_request_single(request_id: str, key: str,value: Any,current_user: Dict) -> bool:
+ 
+    # Step 0: Permission check
+    if current_user.get("role") != "HM":
+        logger.warning(f"Unauthorized patch attempt by role={current_user['role']}, hm_id={current_user['employee_id']}")
+        raise PermissionError("You do not have permission to patch resource requests.")
+ 
+ 
+    # Step 2: Normalize value if needed (e.g., dates)
+    update_value = normalize_dates({key: value})[key]
+    logger.debug(f"Normalized value for key={key}: {update_value}")
+ 
+    # Step 3: Apply patch
+    async with await db.client.start_session() as session:
+        async with session.start_transaction():
+            try:
+                result = await db.resource_request.update_one(
+                    {"resource_request_id": request_id, "hm_id": current_user["employee_id"]},
+                    {"$set": {key: update_value}},
+                    session=session
+                )
+ 
+                if result.matched_count == 0:
+                    logger.error(
+                            f"No matching ResourceRequest found for patch. request_id={request_id}, hm_id={current_user['employee_id']}"
+                        )
+                    raise PermissionError("ResourceRequest not found or not owned by this HM.")
+                logger.info(f"Performed the patch on Resource Request ID : {request_id} under HM ID:{current_user['employee_id']}")
+                return True
+ 
+            except Exception as e:
+                logger.error(
+                        f"Error while patching ResourceRequest ID={request_id}, hm_id={current_user['employee_id']}, key={key}: {str(e)}"
+                    )
+                raise Exception(f"Error occurred while patching ResourceRequest: {e}")       
         
 async def delete_resource_request(
     request_id: str,
