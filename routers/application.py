@@ -276,60 +276,71 @@ async def withdraw(app_id: str, current_user: dict = Depends(get_current_user)):
 # FILTER APPLICATIONS
 # Filter by job_rr_id or status
 # ---------------------------------------------------------------------
- 
-ALLOWED_STATUS = {
-    "draft": "Draft",
-    "submitted": "Submitted",
-    "shortlisted": "Shortlisted",
-    "interview": "Interview",
-    "selected": "Selected",
-    "rejected": "Rejected",
-    "allocated": "Allocated",
-    "withdrawn": "Withdrawn",
-}
+
+# Utility function to normalize status values
 def normalize_status(value: str | None) -> str | None:
+    # If no status is provided, return None
     if value is None:
         return None
-    return ALLOWED_STATUS.get(value.strip().lower())
+    # Strip whitespace and capitalize first letter (e.g. "submitted" -> "Submitted")
+    value = value.strip().capitalize()
+    try:
+        # Try to convert the cleaned string into a valid ApplicationStatus Enum
+        return ApplicationStatus(value).value
+    except ValueError:
+        # If the string is not a valid Enum member, return None
+        return None
 
+
+# GET endpoint to fetch applications with optional filters
 @application_router.get("/", response_model=List[Application])
 async def get_applications(
     job_rr_id: Optional[str] = Query(None, description="Filter by job requisition ID"),
     status: Optional[str] = Query(None, description="Filter by status"),
     current_user: dict = Depends(get_current_user),
 ):
-    # Normalize status to match Enum
+    # Step 1: Normalize the status input to match Enum values
     norm_status = normalize_status(status)
+
+    # Step 2: If user provided a status but it's invalid, raise a 400 Bad Request
     if status is not None and norm_status is None:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid status '{status}'. Allowed: {', '.join(ALLOWED_STATUS.values())}"
+            detail="Invalid status"
         )
- 
-    # Build query
+
+    # Step 3: Build MongoDB query based on provided filters
     if job_rr_id and norm_status:
-        query = {"$or": [{"job_rr_id": job_rr_id}, {"status": norm_status}]}
+        # If both job_rr_id and status are provided, filter by both (AND condition)
+        query = {"job_rr_id": job_rr_id, "status": norm_status}
     elif job_rr_id:
+        # If only job_rr_id is provided, filter by job_rr_id
         query = {"job_rr_id": job_rr_id}
     elif norm_status:
+        # If only status is provided, filter by status
         query = {"status": norm_status}
     else:
-        query = {}  # return all
- 
+        # If no filters are provided, return all applications
+        query = {}
+
+    # Step 4: Execute query against MongoDB collection
     cursor = collections["applications"].find(query)
-    applications = await cursor.to_list(length=100)
- 
-    # Normalize DB statuses before returning
+    applications = await cursor.to_list(length=100)  # Limit results to 100
+
+    # Step 5: Normalize statuses from DB before returning
     normalized_apps = []
     for app in applications:
         if "status" in app and app["status"]:
+            # Clean up the status field to ensure it matches Enum values
             fixed = normalize_status(app["status"])
             if fixed:
                 app["status"] = fixed
+        # Convert raw MongoDB document into Application Pydantic model
         normalized_apps.append(Application(**app))
- 
+
+    # Step 6: If no applications found, raise 404 Not Found
     if not normalized_apps:
         raise HTTPException(status_code=404, detail="No applications found for given criteria")
- 
+
+    # Step 7: Return the list of normalized Application models
     return normalized_apps
- 
