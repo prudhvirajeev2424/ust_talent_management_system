@@ -1,8 +1,6 @@
 from typing import Optional,Dict,Any
 from motor.motor_asyncio import AsyncIOMotorClient
-from bson import ObjectId
 from models import ResourceRequest
-from pymongo import ReturnDocument
 import csv
 import os
 from datetime import datetime,date
@@ -11,10 +9,8 @@ from utils.file_upload_utils import logger
 # Define the path for the CSV file
 CSV_PATH = os.path.join(os.path.dirname(__file__), "../upload_files/unprocessed/updated_jobs.csv")
 
-# Create MongoDB async client connection using the provided connection string
-client = AsyncIOMotorClient(
-    "mongodb+srv://303391_db_user:5IhrghdRaiXTR22b@cluster0.i0ih74y.mongodb.net/talent_management?retryWrites=true&w=majority&appName=Cluster0"
-)
+# Create MongoDB async client connection 
+client = AsyncIOMotorClient(os.getenv("MONGODB_CLIENT"))
 db = client.talent_management
 
 # List of job grade bands for comparison
