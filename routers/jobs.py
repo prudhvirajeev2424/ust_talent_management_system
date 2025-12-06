@@ -19,7 +19,7 @@ async def get_all_jobs(location: Optional[str] = None, current_user=Depends(get_
 
 @jobs_router.get("/managers",response_model=List[dict])
 async def get_jobs_under_manager(current_user=Depends(get_current_user)):
-    print(current_user["role"])
+
     if current_user["role"] == "HM" or current_user["role"] == "WFM":
         return await jobs_crud.jobs_under_manager(current_user)
     else:
@@ -40,7 +40,7 @@ async def create_new_job(new_job: ResourceRequest, current_user=Depends(get_curr
         return {"detail": "Job Created Successfully"}
     except Exception as e:
         # Handle errors during creation
-        raise HTTPException(status_code=400, detail=f"Error: {e}")
+        raise HTTPException(status_code=400, detail=f"{e}")
 
 
 # Endpoint to update an existing job

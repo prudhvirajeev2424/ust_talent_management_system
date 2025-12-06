@@ -140,6 +140,7 @@ async def get_jobs(location: Optional[str], current_user):
             logger.info(f"Fetched jobs for HM Employee :{current_user['employee_id']}")
             
             return [await map_job(d) for d in docs]
+        
     except Exception as e:
         logger.error(f"Error in get_jobs for employee_id={current_user.get('employee_id')}, role={current_user.get('role')}: {str(e)}")
         return {"details":f"Error:{e}"}
@@ -150,25 +151,34 @@ async def get_jobs(location: Optional[str], current_user):
 async def jobs_under_manager(current_user):
     
     role= current_user["role"]
-    print(role)
     
     # WFM role can access jobs based on WFM ID
     if role == "WFM":
+        
         query = {"wfm_id": current_user["employee_id"]}
+        
         cursor = db.resource_request.find(query)
+        
         docs = await cursor.to_list(length=100)
+        
         for d in docs:
             d["_id"] = str(d["_id"])
+            
         logger.info(f"Accessing jobs under wfm_id: {current_user['employee_id']}")
         return docs
  
      # HM role can access jobs based on HM ID
     elif role == "HM":
+        
         query = {"hm_id": current_user["employee_id"]}
+        
         cursor = db.resource_request.find(query)
+        
         docs = await cursor.to_list(length=100)
+        
         for d in docs:
             d["_id"] = str(d["_id"])
+            
         logger.info(f"Accessing jobs under hm_id: {current_user['employee_id']}")
         return docs
     
@@ -176,8 +186,11 @@ async def jobs_under_manager(current_user):
 # Function to create a job and associated resource request, and write to a CSV file
 async def create_resource_request(job_data: ResourceRequest, current_user):
     try:
-        row = job_data.dict(by_alias=True) # Convert the ResourceRequest data to a dictionary using aliases
-
+        row = job_data.dict(by_alias=False) # Convert the ResourceRequest data to a dictionary using aliases
+        
+        if row.get('hm_id') != current_user['employee_id']:
+            logger.warning(f"Unauthorized job creation attempt by hm_id={current_user['employee_id']}")
+            raise PermissionError("You do not have permission to create jobs for other HMs.")
 
         # Check if file exists to decide whether to write header
         file_exists = os.path.isfile(CSV_PATH)
@@ -191,22 +204,23 @@ async def create_resource_request(job_data: ResourceRequest, current_user):
                 
             writer.writerow(row)
             logger.info(f"job created and appending it into csv file path: {CSV_PATH}")
+            
     except Exception as e:
         logger.error(f"Error creating resource request for employee_id={current_user.get('employee_id')}: {str(e)}")
-        return {"details":f"Error:{e}"}
+        raise Exception(f"{e}")
 
 
 
-# Function to normalize dates (convert datetime.date to datetime.datetime for MongoDB compatibility)
+# convert datetime.date to datetime.datetime 
 def normalize_dates(doc: dict) -> dict:
-    # Convert all datetime.date values to datetime.datetime for MongoDB
+    # Convert all datetime.date values to datetime.datetime
     for key, value in doc.items():
         if isinstance(value, date) and not isinstance(value, datetime):
             # Convert date → datetime at midnight UTC
             doc[key] = datetime(value.year, value.month, value.day) # If value is a date object but not datetime
     return doc
 
-# Function to update both the ResourceRequest documents in MongoDB
+# Function to update both the ResourceRequest documents
 # - Only HMs can update.
 # - HM can only update jobs they own (hm_id == current_user["employee_id"]). 
 
@@ -215,7 +229,7 @@ async def update_resource_request(request_id: str, update_data: ResourceRequest,
     if current_user["role"] != "HM":
         logger.warning(f"Unauthorized update attempt by role={current_user['role']}, employee_id={current_user['employee_id']}")
         raise PermissionError("You do not have permission to update jobs.")
- 
+
     # Start a session for updates
     async with await db.client.start_session() as session:
         async with session.start_transaction():
@@ -240,6 +254,7 @@ async def update_resource_request(request_id: str, update_data: ResourceRequest,
                     {"$set": update_resource_request_data},
                     session=session
                 )
+                
                 if update_result.matched_count == 0:
                     logger.error(f"No matching ResourceRequest found for update. request_id={request_id}, hm_id={current_user['employee_id']}")
                     raise Exception("ResourceRequest not found for the job.")
@@ -251,9 +266,6 @@ async def update_resource_request(request_id: str, update_data: ResourceRequest,
                 logger.error(f"Error in update_resource_request for request_id={request_id}, hm_id={current_user.get('employee_id')}: {str(e)}")
                 raise Exception(f"Error occurred: {e}")
             
-# Function to get skills availability for HM
-# Fetches all resource requests for the HM, extracts all required skills,
-# and returns count of employees skilled in each skill
 
 # Normalize skill strings by removing brackets, quotes, and extra spaces.
 def clean_skill(skill: str) -> str:
@@ -263,13 +275,13 @@ def clean_skill(skill: str) -> str:
     skill = skill.replace("[", "").replace("]", "")
     skill = skill.replace("'", "").replace('"', "")
     return skill.strip()
- 
 
-async def get_skills_availability(
-    current_user,
-    resource_request_id: Optional[str] = None,
-    skill: Optional[str] = None
-):
+
+# Function to get skills availability for HM
+# Fetches all resource requests for the HM, extracts all required skills,
+# and returns count of employees skilled in each skill
+
+async def get_skills_availability(current_user,resource_request_id: Optional[str] = None,skill: Optional[str] = None):
     try:
         hm_id = current_user["employee_id"]
  
@@ -316,16 +328,13 @@ async def get_skills_availability(
         skills_summary = []
         for skill_name in sorted(all_skills):
             if not skill_name:
-               
                 continue
  
             if skill and skill_name.lower() != skill.lower():
                 logger.debug(f"Skipping skill {skill_name} (filter applied)")
                 continue
  
-            employees_with_skill = await db.employees.find({
-                "detailed_skills": {"$in": [skill_name]}
-            }).to_list(None)
+            employees_with_skill = await db.employees.find({"detailed_skills": {"$in": [skill_name]}}).to_list(None)
  
             skills_summary.append({
                 "skill": skill_name,
