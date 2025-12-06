@@ -184,7 +184,7 @@ async def refresh_token(refresh_token: str):
 
         # If the token is not a refresh token, raise an error
         if token_type != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+            raise HTTPException(status_code=401, detail="Wrong Refresh token")
 
         # Check if the refresh token exists in the database
         stored = await collections["refresh_tokens"].find_one({"token": refresh_token})
