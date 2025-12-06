@@ -275,6 +275,8 @@ def clean_skill(skill: str) -> str:
     skill = skill.strip()
     skill = skill.replace("[", "").replace("]", "")
     skill = skill.replace("'", "").replace('"', "")
+    skill = skill.replace("\\", "").lower()
+
     return skill.strip()
 
 
