@@ -25,6 +25,7 @@ collections = {
     "audit_logs": db.audit_logs,
     "block_list_tokens":db.block_list_tokens,
     "resource_request":db.resource_request,
+    "login_attempts":db["login_attempts"],
     "admin_logs":db["admin_logs"],
     "files":db.files.files
     

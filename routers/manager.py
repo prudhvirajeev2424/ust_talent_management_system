@@ -141,7 +141,7 @@ async def get_manager_applications(current_user: dict, page: int = 1, limit: int
         non_tp_emp_ids = [str(e["employee_id"]) async for e in collections["employees"].find({"type": "Non TP"}, {"employee_id": 1})]
         query = {
             "$or": [
-                {"job_rr_id": {"$in": job_rr_ids}, "status": {"$nin": ["Draft", "Allocated"]}},
+                {"job_rr_id": {"$in": job_rr_ids}, "status": {"$nin": ["Draft", "Allocated","Rejected", "Selected","Withdrawn"]}},
                 {"job_rr_id": {"$in": job_rr_ids}, "employee_id": {"$in": non_tp_emp_ids}, "status": "Submitted"}
             ]
         }
@@ -443,7 +443,15 @@ async def get_skill_matches(
     if not required_skills:
         return {"message": "No required skills defined for this job"}
  
-    req_skills = {skill.strip().lower() for skill in required_skills}
+    parsed_skills = []
+    for skill in required_skills:
+        skill_str = str(skill).strip("[]'\"")
+        if ',' in skill_str:
+            parsed_skills.extend([s.strip().strip("'\"") for s in skill_str.split(',')])
+        else:
+            parsed_skills.append(skill_str.strip())
+    
+    req_skills = {skill.strip().lower() for skill in parsed_skills if skill.strip()}
  
     pipeline = [
         {"$match": {"job_rr_id": job_rr_id, "status": "Submitted"}},
@@ -461,7 +469,7 @@ async def get_skill_matches(
             "employee_name": "$employee_data.employee_name",
             "designation": "$employee_data.designation",
             "city": "$employee_data.city",
-            "skills": "$employee_data.Detailed Skill Set (List of top skills on profile)"
+            "skills": "$employee_data.detailed_skills"
         }}
     ]
    
@@ -472,7 +480,12 @@ async def get_skill_matches(
         if not app.get("employee_name"):
             continue
  
-        emp_skills = {skill.strip().lower() for skill in (app.get("skills") or [])}
+        emp_skills_raw = app.get("skills") or []
+        if isinstance(emp_skills_raw, str):
+            emp_skills_raw = [emp_skills_raw]
+        
+        emp_skills = {skill.strip().lower() for skill in emp_skills_raw if skill}
+        
         matched_count = len(emp_skills.intersection(req_skills))
         match_percentage = (matched_count / len(req_skills)) * 100 if req_skills else 0
  
@@ -496,7 +509,7 @@ async def get_skill_matches(
  
     return {
         "job_rr_id": job_rr_id,
-        "job_title": job.get("title"),
+        "job_title": job.get("ust_role"),
         "total_applications": len(applications),
         "candidates_returned": len(results),
         "required_skills": sorted(list(req_skills)),

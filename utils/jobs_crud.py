@@ -53,8 +53,12 @@ async def get_jobs(location: Optional[str], current_user):
     
         # Admin has access to all jobs
         if role == "Admin" or role=="TP Manager":
-            cursor = db.resource_request.find({}) 
-            # Fetch the jobs as a list
+            
+            # Fetch the jobs as a list 
+            query={}
+            if location:
+                query["city"] = location
+            cursor = db.resource_request.find(query)
             docs = await cursor.to_list(length=100)
             for d in docs:
                 d["_id"] = str(d["_id"])
@@ -64,7 +68,7 @@ async def get_jobs(location: Optional[str], current_user):
         # Employee role-based access
         elif role in ["TP", "Non TP"]:
         
-            emp = await db.employees.find_one({"employee_id": int(current_user["employee_id"])})
+            emp = await db.employees.find_one({"employee_id": int(current_user['employee_id'])})
             #Role - TP
             if emp and role == "TP":
                 curr_band = emp["band"]
@@ -89,7 +93,7 @@ async def get_jobs(location: Optional[str], current_user):
                 docs = await cursor.to_list(length=100)
                 for d in docs:
                     d["_id"] = str(d["_id"])
-                logger.info(f"Fetched jobs for TP Employee: {current_user["employee_id"]}")
+                logger.info(f"Fetched jobs for TP Employee: {current_user['employee_id']}")
                 return [await map_job(d) for d in docs]
             
             else:
@@ -102,27 +106,43 @@ async def get_jobs(location: Optional[str], current_user):
                 docs = await cursor.to_list(length=100)
                 for d in docs:
                     d["_id"] = str(d["_id"])
-                logger.info(f"Fetched jobs for Non TP Employee : {current_user["employee_id"]}")
+                logger.info(f"Fetched jobs for Non TP Employee : {current_user['employee_id']}")
                 return [await map_job(d) for d in docs]
 
         # WFM role can access jobs based on WFM ID
         elif role == "WFM":
-            query = {"wfm_id": {"$ne":current_user["employee_id"]}}
+            query = {"wfm_id": {"$ne":current_user['employee_id']}}
+            
+            if location:
+                query["city"] = location
+                
             cursor = db.resource_request.find(query)
+            
             docs = await cursor.to_list(length=100)
+            
             for d in docs:
                 d["_id"] = str(d["_id"])
-            logger.info(f"Fetched jobs for WFM Employee:{current_user["employee_id"]}")
+                
+            logger.info(f"Fetched jobs for WFM Employee:{current_user['employee_id']}")
+            
             return [await map_job(d) for d in docs]
 
         # HM role can access jobs based on HM ID
         elif role == "HM":
             query = {"hm_id": {"$ne":current_user["employee_id"]}}
+            
+            if location:
+                query["city"] = location
+                
             cursor = db.resource_request.find(query)
+            
             docs = await cursor.to_list(length=100)
+            
             for d in docs:
                 d["_id"] = str(d["_id"])
-            logger.info(f"Fetched jobs for HM Employee :{current_user["employee_id"]}")
+                
+            logger.info(f"Fetched jobs for HM Employee :{current_user['employee_id']}")
+            
             return [await map_job(d) for d in docs]
     except Exception as e:
         logger.error(f"Error in get_jobs for employee_id={current_user.get('employee_id')}, role={current_user.get('role')}: {str(e)}")
@@ -133,7 +153,8 @@ async def get_jobs(location: Optional[str], current_user):
 #     - HM : jobs where hm_id== current_user 
 async def jobs_under_manager(current_user):
     
-    role = current_user["role"]
+    role= current_user["role"]
+    print(role)
     
     # WFM role can access jobs based on WFM ID
     if role == "WFM":
@@ -142,7 +163,7 @@ async def jobs_under_manager(current_user):
         docs = await cursor.to_list(length=100)
         for d in docs:
             d["_id"] = str(d["_id"])
-        logger.info(f"Accessing jobs under wfm_id: {current_user["employee_id"]}")
+        logger.info(f"Accessing jobs under wfm_id: {current_user['employee_id']}")
         return docs
  
      # HM role can access jobs based on HM ID
@@ -152,10 +173,9 @@ async def jobs_under_manager(current_user):
         docs = await cursor.to_list(length=100)
         for d in docs:
             d["_id"] = str(d["_id"])
-        logger.info(f"Accessing jobs under hm_id: {current_user["employee_id"]}")
+        logger.info(f"Accessing jobs under hm_id: {current_user['employee_id']}")
         return docs
-
-
+    
     
 # Function to create a job and associated resource request, and write to a CSV file
 async def create_resource_request(job_data: ResourceRequest, current_user):
@@ -197,7 +217,7 @@ def normalize_dates(doc: dict) -> dict:
 async def update_resource_request(request_id: str, update_data: ResourceRequest, current_user):
    
     if current_user["role"] != "HM":
-        logger.warning(f"Unauthorized update attempt by role={current_user["role"]}, employee_id={current_user["employee_id"]}")
+        logger.warning(f"Unauthorized update attempt by role={current_user['role']}, employee_id={current_user['employee_id']}")
         raise PermissionError("You do not have permission to update jobs.")
  
     # Start a session for updates
@@ -210,8 +230,9 @@ async def update_resource_request(request_id: str, update_data: ResourceRequest,
                     session=session  # Pass the session for atomicity
                 )
                 logger.info(f"Fetching the Existing Job from Resource Request Document with ID: {request_id}")
+                
                 if not resource_request:
-                    logger.warning(f"ResourceRequest not found or unauthorized for request_id={request_id}, hm_id={current_user["employee_id"]}")
+                    logger.warning(f"ResourceRequest not found or unauthorized for request_id={request_id}, hm_id={current_user['employee_id']}")
                     raise PermissionError("ResourceRequest not found or you're not authorized to update this job.")
  
                 # Step 2: Update ResourceRequest
@@ -224,10 +245,10 @@ async def update_resource_request(request_id: str, update_data: ResourceRequest,
                     session=session
                 )
                 if update_result.matched_count == 0:
-                    logger.error(f"No matching ResourceRequest found for update. request_id={request_id}, hm_id={current_user["employee_id"]}")
+                    logger.error(f"No matching ResourceRequest found for update. request_id={request_id}, hm_id={current_user['employee_id']}")
                     raise Exception("ResourceRequest not found for the job.")
 
-                logger.info(f"Updating the Resource Request ID: {request_id} by HM ID: {current_user["employee_id"]}")
+                logger.info(f"Updating the Resource Request ID: {request_id} by HM ID: {current_user['employee_id']}")
                 return True
  
             except Exception as e:
@@ -247,7 +268,7 @@ def clean_skill(skill: str) -> str:
     skill = skill.replace("'", "").replace('"', "")
     return skill.strip()
  
- 
+
 async def get_skills_availability(
     current_user,
     resource_request_id: Optional[str] = None,
@@ -255,35 +276,35 @@ async def get_skills_availability(
 ):
     try:
         hm_id = current_user["employee_id"]
-
+ 
         # Step 1: Fetch all resource requests for this HM
         resource_requests = await db.resource_request.find({"hm_id": hm_id}).to_list(None)
         logger.info(f"Fetched the all Resource Requests under HM ID:{hm_id}")
-
+ 
         # Step 2: Extract all unique skills
         all_skills = set()
         rr_skills_mapping = []
-
+ 
         for rr in resource_requests:
             rr_id = rr.get("resource_request_id", "")
-
+ 
             # Apply resource_request_id filter if provided
             if resource_request_id and rr_id != resource_request_id:
                 logger.debug(f"Skipping resource request {rr_id} (filter applied)")
                 continue
-
+ 
             mandatory_skills = rr.get("mandatory_skills", [])
             optional_skills = rr.get("optional_skills", [])
-
+ 
             if isinstance(optional_skills, str):
                 optional_skills = [s.strip() for s in optional_skills.split(",") if s.strip()]
-
+ 
             mandatory_skills = [clean_skill(s) for s in mandatory_skills]
             optional_skills = [clean_skill(s) for s in optional_skills]
-
+ 
             combined_skills = list(set(mandatory_skills + optional_skills))
             all_skills.update(combined_skills)
-
+ 
             rr_skills_mapping.append({
                 "resource_request_id": rr_id,
                 "project_name": rr.get("project_name", ""),
@@ -294,22 +315,22 @@ async def get_skills_availability(
                 "total_skills_required": len(combined_skills)
             })
         logger.info(f"Extracted {len(all_skills)} unique skills across resource requests")
-
+ 
         # Step 3: For each skill, find employees
         skills_summary = []
         for skill_name in sorted(all_skills):
             if not skill_name:
-                
+               
                 continue
-
+ 
             if skill and skill_name.lower() != skill.lower():
                 logger.debug(f"Skipping skill {skill_name} (filter applied)")
                 continue
-
+ 
             employees_with_skill = await db.employees.find({
                 "detailed_skills": {"$in": [skill_name]}
             }).to_list(None)
-
+ 
             skills_summary.append({
                 "skill": skill_name,
                 "employee_count": len(employees_with_skill),
@@ -324,7 +345,7 @@ async def get_skills_availability(
                     for emp in employees_with_skill
                 ]
             })
-
+ 
         # Step 4: Conditional return format
         if resource_request_id and not skill:
             logger.info("Returning data with resource_request filter only")
@@ -336,7 +357,7 @@ async def get_skills_availability(
             }
         elif skill and not resource_request_id:
             logger.info("Returning data with skill filter only")
-
+ 
             # Only skill filter
             return {
                 "hm_id": hm_id,
@@ -344,10 +365,11 @@ async def get_skills_availability(
             }
         elif skill and resource_request_id:
             logger.info("Returning data with both resource_request and skill filters")
-
+ 
             # Both filters applied
             return {
                 "hm_id": hm_id,
+                "all_unique_skills": list(all_skills),
                 "resource_requests": rr_skills_mapping,
                 "skills_summary": skills_summary
             }
@@ -357,6 +379,7 @@ async def get_skills_availability(
             return {
                 "hm_id": hm_id,
                 "resource_requests_count": len(resource_requests),
+                "all_unique_skills": list(all_skills),
                 "total_unique_skills": len(all_skills),
                 "resource_requests": rr_skills_mapping,
                 "skills_summary": sorted(skills_summary, key=lambda x: x["employee_count"], reverse=True),
@@ -369,20 +392,20 @@ async def get_skills_availability(
                     "skills_with_no_employees": len([s for s in skills_summary if s["employee_count"] == 0])
                 }
             }
-
+ 
     except Exception as e:
         logger.error(
             f"Error retrieving skills availability for HM ID={current_user.get('employee_id')}, "
             f"resource_request_id={resource_request_id}, skill={skill}: {str(e)}"
         )
         raise Exception(f"Error retrieving skills availability: {str(e)}")
+ 
     
-   
 async def patch_resource_request_single(request_id: str, key: str,value: Any,current_user: Dict) -> bool:
  
     # Step 0: Permission check
     if current_user.get("role") != "HM":
-        logger.warning(f"Unauthorized patch attempt by role={current_user["role"]}, hm_id={current_user["employee_id"]}")
+        logger.warning(f"Unauthorized patch attempt by role={current_user['role']}, hm_id={current_user['employee_id']}")
         raise PermissionError("You do not have permission to patch resource requests.")
  
  
@@ -402,15 +425,15 @@ async def patch_resource_request_single(request_id: str, key: str,value: Any,cur
  
                 if result.matched_count == 0:
                     logger.error(
-                            f"No matching ResourceRequest found for patch. request_id={request_id}, hm_id={current_user["employee_id"]}"
+                            f"No matching ResourceRequest found for patch. request_id={request_id}, hm_id={current_user['employee_id']}"
                         )
                     raise PermissionError("ResourceRequest not found or not owned by this HM.")
-                logger.info(f"Performed the patch on Resource Request ID : {request_id} under HM ID:{current_user["employee_id"]}")
+                logger.info(f"Performed the patch on Resource Request ID : {request_id} under HM ID:{current_user['employee_id']}")
                 return True
- 
+
             except Exception as e:
                 logger.error(
-                        f"Error while patching ResourceRequest ID={request_id}, hm_id={current_user["employee_id"]}, key={key}: {str(e)}"
+                        f"Error while patching ResourceRequest ID={request_id}, hm_id={current_user['employee_id']}, key={key}: {str(e)}"
                     )
                 raise Exception(f"Error occurred while patching ResourceRequest: {e}")
         
@@ -419,10 +442,10 @@ async def delete_resource_request(
     request_id: str,
     current_user: Dict
 ) -> bool:
- 
+
     # Step 0: Permission check
     if current_user.get("role") != "HM":
-        logger.warning(f"Unauthorized delete attempt by role={current_user["role"]}, hm_id={current_user["employee_id"]}")
+        logger.warning(f"Unauthorized delete attempt by role={current_user['role']}, hm_id={current_user['employee_id']}")
         raise PermissionError("You do not have permission to delete resource requests.")
  
     async with await db.client.start_session() as session:
@@ -433,16 +456,16 @@ async def delete_resource_request(
                     {"$set": {"flag": False}},   # mark as inactive
                     session=session
                 )
- 
+
                 if result.matched_count == 0:
                     raise PermissionError("ResourceRequest not found or not owned by this HM.")
                
-                logger.info(f"Deactivating the Resource Request ID : {request_id} under HM ID:{current_user["employee_id"]}")
+                logger.info(f"Deactivating the Resource Request ID : {request_id} under HM ID:{current_user['employee_id']}")
  
                 return True
  
             except Exception as e:
                 logger.error(
-                        f"Error while deleting ResourceRequest ID={request_id}, hm_id={current_user["employee_id"]}: {str(e)}"
+                        f"Error while deleting ResourceRequest ID={request_id}, hm_id={current_user['employee_id']}: {str(e)}"
                     )
                 raise Exception(f"Error occurred while deleting ResourceRequest: {e}")

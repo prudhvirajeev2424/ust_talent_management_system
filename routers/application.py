@@ -27,7 +27,7 @@ application_router = APIRouter(prefix="/application", tags=["Applications"])
 async def create_application(
     job_rr_id: str = Form(...),
     resume_file: UploadFile = File(...),
-    cover_letter_file: UploadFile | None = File(default=None),
+    cover_letter_file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
     # 1. validate job_rr_id, employee, etc. like you already do
@@ -91,7 +91,7 @@ async def create_application(
             metadata={"content_type": resume_file.content_type},
         )
 
-    # 5. Store cover letter in GridFS (optional, validate extension if uploaded)
+    # 5. Store cover letter in GridFS (validate extension if uploaded)
     cover_letter_file_id = None
     if cover_letter_file:
         ext = cover_letter_file.filename.split(".")[-1].lower()
@@ -209,7 +209,7 @@ async def update_draft(
         {"$set": update_fields},
     )
  
-    return {"message": "Updated"}
+    return {"message": "Your application is Updated"}
  
 # ---------------------------------------------------------------------
 # SUBMIT APPLICATION
@@ -246,7 +246,7 @@ async def update_draft_status(
         }
     )
     print("Modified count:", result.modified_count)
-    return {"message": "Updated"}
+    return {"message": "Your application is successfully Submitted"}
 
 # ---------------------------------------------------------------------
 # WITHDRAW APPLICATION
@@ -270,7 +270,7 @@ async def withdraw(app_id: str, current_user: dict = Depends(get_current_user)):
         {"_id": app_id},
         {"$set": {"status": ApplicationStatus.WITHDRAWN}}
     )
-    return {"message": "Withdrawn"}
+    return {"message": "Your application is successfully Withdrawn"}
 
 # ---------------------------------------------------------------------
 # FILTER APPLICATIONS
