@@ -315,3 +315,15 @@ class Application(BaseModel):
     submitted_at: Optional[datetime] = None
     # Timestamp auto-updated
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ForgotPasswordRequest(BaseModel):
+    email:str
+
+class verifyCodeRequest(BaseModel):
+    email:str
+    code:str
+
+class ResetPasswordRequest(BaseModel):
+    email:str
+    code:str
+    new_password:str
