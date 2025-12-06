@@ -51,7 +51,7 @@ async def upload_career_velocity(file: UploadFile = File(...),current_user=Depen
         raise ReportProcessingException(f"Failed to read file: {e}")
  
     # Required columns for employee upload
-    required = ["Employee ID", "Employee Name", "Designation", "Band", "City", "Type"]
+    required = ["Employee ID", "Employee Name", "Designation", "Band","Primary Technology", "City", "Type"]
     if missing := [c for c in required if c not in df.columns]:
         # If any required column is missing, fail the validation
         raise ValidationException(f"Missing columns: {missing}")
