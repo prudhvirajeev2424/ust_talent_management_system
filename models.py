@@ -91,7 +91,7 @@ class Employee(BaseModel):
 # ----------------------------- RESOURCE REQUEST MODEL -----------------------------
 class ResourceRequest(BaseModel):
     # All fields mapped using aliases from RR Excel
-    resource_request_id: str = Field(..., alias="Resource Request ID")
+    resource_request_id: str = Field(...,pattern=r"^[1-9][0-9]{7}_[1-9]+$", alias="Resource Request ID")
     rr_fte: float = Field(..., alias="RR FTE")
     allocated_fte: Optional[float] = Field(None, alias="Allocated FTE")
     rr_status: Literal["Approved", "Cancelled", "Closed", "EDIT REQUEST APPROVED"] = Field(..., alias="RR Status")
